@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libzstd-dev pkg-config
+
+      - name: Install elan
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Lake build
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: .lake
+          key: lake-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'Zstd/**/*.lean', 'c/**') }}
+          restore-keys: lake-
+
+      - name: Clean stale Lake cache on fallback restore
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: rm -rf .lake
+
+      - name: Build
+        run: lake build
+
+      - name: Test
+        run: lake exe test
