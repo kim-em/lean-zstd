@@ -25,6 +25,7 @@ All predicates have `Decidable` instances for use with `decide`.
 namespace Zstd.Spec.Huffman
 
 open Zstd.Native (HuffmanEntry ZstdHuffmanTable)
+open Zip.Native (BitReader)
 
 /-! ## Weight sum computation -/
 

@@ -14,6 +14,8 @@ import Zstd.Native.Fse
 
 namespace Zstd.Native
 
+open Zip.Native (BitReader)
+
 /-- A single entry in a Zstd Huffman decoding table. -/
 structure HuffmanEntry where
   /-- The symbol this entry decodes to. -/

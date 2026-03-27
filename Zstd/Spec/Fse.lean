@@ -21,6 +21,7 @@ instances for use with `decide`.
 namespace Zstd.Spec.Fse
 
 open Zstd.Native (FseCell)
+open Zip.Native (BitReader)
 
 /-- The accuracy log for an FSE table is valid per RFC 8878 §4.1 when it
     falls in the range [5, 9]. This is the range for sequence-level FSE
@@ -256,10 +257,10 @@ theorem decodeZeroRepeats_probs_ge_neg1
         exact hpz
 
 /-- `readBit` returns a value that is 0 or 1, since it masks with `&&& 1`. -/
-private theorem readBit_value_lt_2 {br : Zstd.Native.BitReader} {val : UInt32}
-    {br' : Zstd.Native.BitReader}
+private theorem readBit_value_lt_2 {br : Zip.Native.BitReader} {val : UInt32}
+    {br' : Zip.Native.BitReader}
     (h : br.readBit = .ok (val, br')) : val.toNat < 2 := by
-  unfold Zstd.Native.BitReader.readBit at h
+  unfold Zip.Native.BitReader.readBit at h
   split at h
   · exact nomatch h
   · dsimp only at h
@@ -271,19 +272,19 @@ private theorem readBit_value_lt_2 {br : Zstd.Native.BitReader} {val : UInt32}
 /-- The inner accumulation loop of forward `BitReader.readBits` produces
     a value less than `2^(shift + k)` when the accumulator starts below `2^shift`.
     Each step OR's a single bit at position `shift + i`, preserving the bound. -/
-private theorem readBits_go_value_lt_pow2 (br : Zstd.Native.BitReader)
-    (k shift : Nat) (acc val : UInt32) (br' : Zstd.Native.BitReader)
+private theorem readBits_go_value_lt_pow2 (br : Zip.Native.BitReader)
+    (k shift : Nat) (acc val : UInt32) (br' : Zip.Native.BitReader)
     (hacc : acc.toNat < 2 ^ shift)
     (hshift : shift + k ≤ 32)
-    (h : Zstd.Native.BitReader.readBits.go br acc shift k = .ok (val, br')) :
+    (h : Zip.Native.BitReader.readBits.go br acc shift k = .ok (val, br')) :
     val.toNat < 2 ^ (shift + k) := by
   induction k generalizing br acc shift with
   | zero =>
-    simp only [Zstd.Native.BitReader.readBits.go] at h
+    simp only [Zip.Native.BitReader.readBits.go] at h
     obtain ⟨rfl, _⟩ := Prod.mk.inj (Except.ok.inj h)
     simpa only [Nat.add_zero] using hacc
   | succ k ih =>
-    simp only [Zstd.Native.BitReader.readBits.go, bind, Except.bind] at h
+    simp only [Zip.Native.BitReader.readBits.go, bind, Except.bind] at h
     cases hrb : br.readBit with
     | error e => rw [hrb] at h; exact nomatch h
     | ok bv =>
@@ -1231,6 +1232,31 @@ Proves that `decodeFseDistribution` advances `BitReader.bitPos` by at least 4,
 corresponding to the 4 bits read for the accuracy log. This enables proving
 that the `fseCompressed` mode of `resolveSingleFseTable` strictly advances
 the byte position. -/
+
+-- These definitions/theorems are from lean-zip's BitReaderInvariant.lean.
+-- They need to be upstreamed to lean-zip-common; for now we provide local stubs.
+
+end Zstd.Spec.Fse
+
+/-- The total bit position of a BitReader: byte position * 8 + bit offset. -/
+def Zip.Native.BitReader.bitPos (br : Zip.Native.BitReader) : Nat := br.pos * 8 + br.bitOff
+
+/-- Reading `n` bits advances bitPos by exactly `n` (requires `bitOff < 8`). -/
+theorem Zstd.Spec.Fse.readBits_bitPos_eq (br br' : Zip.Native.BitReader) (n : Nat)
+    (val : UInt32) (h : br.readBits n = .ok (val, br'))
+    (hbo : br.bitOff < 8) :
+    br'.bitPos = br.bitPos + n := by
+  sorry
+
+/-- After a successful `readBits`, the resulting `pos ≤ data.size`. -/
+theorem Zstd.Spec.Fse.readBits_pos_le_size (br br' : Zip.Native.BitReader) (n : Nat)
+    (val : UInt32) (h : br.readBits n = .ok (val, br'))
+    (hple : br.pos ≤ br.data.size) :
+    br'.pos ≤ br'.data.size := by
+  sorry
+
+namespace Zstd.Spec.Fse
+open Zip.Native (BitReader)
 
 -- Helper: readBit always produces bitOff < 8
 -- (The equivalent in BitReaderInvariant is private, so we reproduce it here.)

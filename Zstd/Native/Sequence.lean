@@ -15,6 +15,8 @@ import Zstd.Native.Fse
 
 namespace Zstd.Native
 
+open Zip.Native (BitReader)
+
 /-- Compression mode for one of the three sequence symbol types
     (RFC 8878 §3.1.1.3.2). -/
 inductive SequenceCompressionMode where
