@@ -64,7 +64,7 @@ def linkFlags : IO (Array String) := do
   return libPaths ++ #["-lzstd", "-Wl,--allow-shlib-undefined"]
 
 require zipCommon from git
-  "https://github.com/kim-em/lean-zip-common" @ "41be5f7"
+  "https://github.com/kim-em/lean-zip-common" @ "87480b0"
 
 package «lean-zstd» where
   moreLinkArgs := run_io linkFlags

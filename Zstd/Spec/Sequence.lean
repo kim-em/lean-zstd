@@ -24,7 +24,7 @@ Correctness theorems relate the implementation (`resolveOffset`,
 
 namespace Zstd.Native
 
-open Zip.Native (BitReader)
+open ZipCommon (BitReader)
 
 /-- `copyBytes` increases destination size by exactly `count`. -/
 theorem copyBytes_size (dst : ByteArray) (src : ByteArray) (srcPos count : Nat) :
