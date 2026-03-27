@@ -1,5 +1,6 @@
 import Zstd.Native.Fse
 import ZipCommon.BitReader
+import ZipCommon.Spec.BitReaderInvariant
 
 /-!
 # FSE Distribution and Table Validity Predicates
@@ -1233,30 +1234,10 @@ corresponding to the 4 bits read for the accuracy log. This enables proving
 that the `fseCompressed` mode of `resolveSingleFseTable` strictly advances
 the byte position. -/
 
--- These definitions/theorems are from lean-zip's BitReaderInvariant.lean.
--- They need to be upstreamed to lean-zip-common; for now we provide local stubs.
-
 end Zstd.Spec.Fse
 
-/-- The total bit position of a BitReader: byte position * 8 + bit offset. -/
-def Zip.Native.BitReader.bitPos (br : Zip.Native.BitReader) : Nat := br.pos * 8 + br.bitOff
-
-/-- Reading `n` bits advances bitPos by exactly `n` (requires `bitOff < 8`). -/
-theorem Zstd.Spec.Fse.readBits_bitPos_eq (br br' : Zip.Native.BitReader) (n : Nat)
-    (val : UInt32) (h : br.readBits n = .ok (val, br'))
-    (hbo : br.bitOff < 8) :
-    br'.bitPos = br.bitPos + n := by
-  sorry
-
-/-- After a successful `readBits`, the resulting `pos ≤ data.size`. -/
-theorem Zstd.Spec.Fse.readBits_pos_le_size (br br' : Zip.Native.BitReader) (n : Nat)
-    (val : UInt32) (h : br.readBits n = .ok (val, br'))
-    (hple : br.pos ≤ br.data.size) :
-    br'.pos ≤ br'.data.size := by
-  sorry
-
 namespace Zstd.Spec.Fse
-open Zip.Native (BitReader)
+open Zip.Native (BitReader readBits_bitPos_eq readBits_pos_le_size)
 
 -- Helper: readBit always produces bitOff < 8
 -- (The equivalent in BitReaderInvariant is private, so we reproduce it here.)
