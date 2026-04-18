@@ -14,6 +14,8 @@ import Zstd.Spec.Content
 import Zstd.Spec.Complete
 import Zstd.Spec.Zstd
 import Zstd.Spec.FrameBase
+import Zstd.Spec.FrameSimpleComplete
+import Zstd.Spec.FrameCompComplete
 import Zstd.Spec.Frame
 import Zstd.Spec.Huffman
 import Zstd.Spec.Sequence
