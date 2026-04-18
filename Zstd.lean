@@ -8,6 +8,9 @@ import Zstd.Spec.Fse
 import Zstd.Spec.XxHash
 import Zstd.Spec.Base
 import Zstd.Spec.BlockLoop
+import Zstd.Spec.TwoBlockBase
+import Zstd.Spec.TwoBlockCompressed
+import Zstd.Spec.TwoBlockComplete
 import Zstd.Spec.TwoBlock
 import Zstd.Spec.Succeeds
 import Zstd.Spec.Content
