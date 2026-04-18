@@ -104,36 +104,48 @@ def readProbValue (br : BitReader) (remaining : Nat) :
       -- This matches the reference: count = fullVal - max when fullVal >= threshold
       pure (rawBits.toNat + threshold - lowThreshold, br)
 
+set_option linter.unusedVariables false in
 /-- Main loop for FSE distribution decoding. Processes symbols one at a time,
     reading probability values and handling zero-repeat sequences.
-    Uses fuel for termination.
+
+    Terminates on the measure `remaining + (maxSymbols - symbolNum)`. The
+    `prob == -1` and positive-probability branches always strictly decrease
+    this measure (they decrement `remaining` and/or increment `symbolNum`).
+    The `prob == 0` branch delegates to `decodeZeroRepeats` which always
+    advances `symbolNum` by at least one (the explicit `probs.push 0` +
+    `symbolNum + 1` before the call guarantees this); the runtime guard
+    `hadv` rejects degenerate outputs so `decreasing_by` discharges trivially.
 
     Written without `do` notation for clean equation lemmas in proofs. -/
 def decodeFseLoop (br : BitReader) (remaining : Nat) (probs : Array Int32)
-    (symbolNum : Nat) (maxSymbols : Nat) : Nat →
-    Except String (Nat × Array Int32 × Nat × BitReader)
-  | 0 => .error "FSE: distribution loop exceeded maximum iterations"
-  | fuel + 1 =>
-    if ¬(remaining > 0 ∧ symbolNum < maxSymbols) then
-      .ok (remaining, probs, symbolNum, br)
-    else
-      match readProbValue br remaining with
-      | .error e => .error e
-      | .ok (val, br) =>
-        let prob : Int32 := Int32.ofNat val - 1
-        if (prob == 0) = true then
-          match decodeZeroRepeats br (probs.push 0) (symbolNum + 1) maxSymbols with
-          | .error e => .error e
-          | .ok (probs, symbolNum, br) =>
-            decodeFseLoop br remaining probs symbolNum maxSymbols fuel
-        else if (prob == -1) = true then
-          decodeFseLoop br (remaining - 1) (probs.push prob) (symbolNum + 1) maxSymbols fuel
-        else
-          let probNat := int32ToNat prob
-          if probNat > remaining then
-            .error s!"FSE: probability {prob} exceeds remaining {remaining}"
+    (symbolNum : Nat) (maxSymbols : Nat) :
+    Except String (Nat × Array Int32 × Nat × BitReader) :=
+  if hrun : remaining > 0 ∧ symbolNum < maxSymbols then
+    match readProbValue br remaining with
+    | .error e => .error e
+    | .ok (val, br) =>
+      let prob : Int32 := Int32.ofNat val - 1
+      if (prob == 0) = true then
+        match decodeZeroRepeats br (probs.push 0) (symbolNum + 1) maxSymbols with
+        | .error e => .error e
+        | .ok (probs, symbolNum', br) =>
+          if hadv : symbolNum' > symbolNum then
+            decodeFseLoop br remaining probs symbolNum' maxSymbols
           else
-            decodeFseLoop br (remaining - probNat) (probs.push prob) (symbolNum + 1) maxSymbols fuel
+            .error "FSE: zero-probability loop did not advance symbol count"
+      else if (prob == -1) = true then
+        decodeFseLoop br (remaining - 1) (probs.push prob) (symbolNum + 1) maxSymbols
+      else
+        let probNat := int32ToNat prob
+        if probNat > remaining then
+          .error s!"FSE: probability {prob} exceeds remaining {remaining}"
+        else
+          decodeFseLoop br (remaining - probNat) (probs.push prob) (symbolNum + 1) maxSymbols
+  else
+    .ok (remaining, probs, symbolNum, br)
+termination_by remaining + (maxSymbols - symbolNum)
+decreasing_by
+  all_goals (first | (exact Nat.add_lt_add_of_le_of_lt (Nat.le_refl _) (Nat.sub_lt_sub_left hadv hrun.2)) | omega)
 
 /-- Decode an FSE distribution (normalized probabilities) from a bitstream.
     `maxSymbols` is the maximum number of symbols allowed (e.g. 256 for literals,
@@ -151,7 +163,7 @@ def decodeFseDistribution (br : ZipCommon.BitReader) (maxSymbols : Nat)
     if accuracyLog > maxAccLog then
       .error s!"FSE: accuracy log {accuracyLog} exceeds maximum {maxAccLog}"
     else
-      match decodeFseLoop br (1 <<< accuracyLog) #[] 0 maxSymbols 10000 with
+      match decodeFseLoop br (1 <<< accuracyLog) #[] 0 maxSymbols with
       | .error e => .error e
       | .ok (remaining, probs, _, br) =>
         if remaining != 0 then

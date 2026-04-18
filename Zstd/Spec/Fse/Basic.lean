@@ -170,59 +170,82 @@ open Zstd.Native in
     all iterations of `decodeFseLoop`. -/
 theorem decodeFseLoop_invariant
     {br : BitReader} {rem : Nat} {probs : Array Int32}
-    {sym ms : Nat} {fuel : Nat}
+    {sym ms : Nat}
     {rem' : Nat} {probs' : Array Int32} {sym' : Nat} {br' : BitReader}
-    (h : decodeFseLoop br rem probs sym ms fuel = .ok (rem', probs', sym', br')) :
+    (h : decodeFseLoop br rem probs sym ms = .ok (rem', probs', sym', br')) :
     rem' + cellCount probs' = rem + cellCount probs := by
-  induction fuel generalizing br rem probs sym with
-  | zero => simp only [decodeFseLoop, reduceCtorEq] at h
-  | succ fuel ih =>
-    -- Use equation lemma to unfold one level (no do-notation artifacts)
-    rw [decodeFseLoop.eq_2] at h
-    -- Split on loop exit condition
-    by_cases hcond : ¬(rem > 0 ∧ sym < ms)
-    · -- Loop exits: return unchanged state
-      rw [if_pos hcond] at h
-      simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, rfl, _, _⟩ := h; rfl
-    · -- Loop continues
-      rw [if_neg hcond] at h
-      -- Split on readProbValue
-      cases hrpv : readProbValue br rem with
-      | error e => simp only [hrpv, reduceCtorEq] at h
-      | ok val =>
-        simp only [hrpv] at h
-        -- Split on prob == 0
-        by_cases hp0 : (Int32.ofNat val.fst - 1 == 0) = true
-        · rw [if_pos hp0] at h
-          -- Zero probability: split on decodeZeroRepeats
-          cases hzr : decodeZeroRepeats val.2 (probs.push 0) (sym + 1) ms with
-          | error e => simp only [hzr, reduceCtorEq] at h
-          | ok val₂ =>
-            simp only [hzr] at h
-            rw [ih h, decodeZeroRepeats_cellCount hzr, cellCount_push_zero]
-        · rw [if_neg hp0] at h
-          -- Split on prob == -1
-          by_cases hp1 : (Int32.ofNat val.fst - 1 == -1) = true
-          · rw [if_pos hp1] at h
-            rw [ih h, cellCount_push, eq_of_beq hp1]
-            simp only [show ((-1 : Int32).toInt > 0) = False from by decide,
-                        show ((-1 : Int32) == -1) = true from by decide,
-                        ↓reduceIte]
-            omega
-          · rw [if_neg hp1] at h
-            -- Split on probNat > remaining
-            by_cases hgt : int32ToNat (Int32.ofNat val.fst - 1) > rem
-            · rw [if_pos hgt] at h; exact nomatch h
-            · rw [if_neg hgt] at h
-              rw [ih h, cellCount_push]
-              by_cases hpos : (Int32.ofNat val.fst - 1).toInt > 0
-              · rw [if_pos hpos]
-                simp only [int32ToNat, show ¬(Int32.ofNat val.fst - 1).toInt < 0 from by omega,
-                            ↓reduceIte] at hgt ⊢
-                omega
-              · rw [if_neg hpos, if_neg hp1]
-                simp only [int32ToNat]
-                split <;> omega
+  suffices aux : ∀ (br : BitReader) (rem : Nat) (probs : Array Int32) (sym : Nat),
+      ∀ {rem' : Nat} {probs' : Array Int32} {sym' : Nat} {br' : BitReader},
+      decodeFseLoop br rem probs sym ms = .ok (rem', probs', sym', br') →
+      rem' + cellCount probs' = rem + cellCount probs from aux _ _ _ _ h
+  intro br rem probs sym
+  induction br, rem, probs, sym using decodeFseLoop.induct (maxSymbols := ms) with
+  | case1 br rem probs sym hrun e hrpv =>
+    intro _ _ _ _ h
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h; exact nomatch h
+  | case2 br rem probs sym hrun val br₁ hrpv _prob hp0 e =>
+    rename_i hzr
+    intro _ _ _ _ h
+    have hp0 : (Int32.ofNat val - 1 == 0) = true := hp0
+    have hzr : decodeZeroRepeats br₁ (probs.push 0) (sym + 1) ms = .error e := hzr
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0, ↓reduceIte, hzr] at h; exact nomatch h
+  | case3 br rem probs sym hrun val br₁ hrpv _prob hp0 probs₁ sym₁ br₂ hzr hadv =>
+    rename_i ih
+    intro _ _ _ _ h
+    have hp0 : (Int32.ofNat val - 1 == 0) = true := hp0
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0, ↓reduceIte, hzr, hadv, ↓reduceDIte] at h
+    rw [ih h, decodeZeroRepeats_cellCount hzr, cellCount_push_zero]
+  | case4 br rem probs sym hrun val br₁ hrpv _prob hp0 probs₁ sym₁ br₂ hzr =>
+    rename_i hadv
+    intro _ _ _ _ h
+    have hp0 : (Int32.ofNat val - 1 == 0) = true := hp0
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0, ↓reduceIte, hzr, hadv, ↓reduceDIte] at h; exact nomatch h
+  | case5 br rem probs sym hrun val br₁ hrpv _prob hp0 hp1 =>
+    rename_i ih
+    intro _ _ _ _ h
+    have hp0' : ¬(Int32.ofNat val - 1 == 0) = true := hp0
+    have hp1' : (Int32.ofNat val - 1 == -1) = true := hp1
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0', ↓reduceIte, hp1'] at h
+    rw [ih h, cellCount_push, eq_of_beq hp1]
+    simp only [show ((-1 : Int32).toInt > 0) = False from by decide,
+                show ((-1 : Int32) == -1) = true from by decide,
+                ↓reduceIte]
+    omega
+  | case6 br rem probs sym hrun val br₁ hrpv _prob hp0 hp1 =>
+    rename_i hgt
+    intro _ _ _ _ h
+    have hp0 : ¬(Int32.ofNat val - 1 == 0) = true := hp0
+    have hp1 : ¬(Int32.ofNat val - 1 == -1) = true := hp1
+    have hgt : int32ToNat (Int32.ofNat val - 1) > rem := hgt
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0, ↓reduceIte, hp1, hgt] at h; exact nomatch h
+  | case7 br rem probs sym hrun val br₁ hrpv _prob hp0 hp1 =>
+    rename_i _probNat hgt ih
+    intro _ _ _ _ h
+    have hp0' : ¬(Int32.ofNat val - 1 == 0) = true := hp0
+    have hp1' : ¬(Int32.ofNat val - 1 == -1) = true := hp1
+    have hgt' : ¬int32ToNat (Int32.ofNat val - 1) > rem := hgt
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0', ↓reduceIte, hp1', hgt'] at h
+    rw [ih h, cellCount_push]
+    by_cases hpos : _prob.toInt > 0
+    · rw [if_pos hpos]
+      change ¬int32ToNat _prob > rem at hgt
+      change rem - int32ToNat _prob + (cellCount probs + _prob.toInt.toNat) = rem + cellCount probs
+      simp only [int32ToNat, show ¬_prob.toInt < 0 from by omega, ↓reduceIte] at hgt ⊢
+      omega
+    · rw [if_neg hpos, if_neg hp1]
+      change rem - int32ToNat _prob + cellCount probs = rem + cellCount probs
+      simp only [int32ToNat]
+      split <;> omega
+  | case8 br rem probs sym hrun =>
+    intro _ _ _ _ h
+    rw [decodeFseLoop.eq_def, dif_neg hrun] at h
+    simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, _, _⟩ := h; rfl
 
 end Zstd.Spec.Fse

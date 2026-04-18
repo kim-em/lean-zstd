@@ -45,7 +45,7 @@ theorem decodeFseDistribution_ok_decompose
       br.readBits 4 = .ok rdval ∧
       al = rdval.1.toNat + 5 ∧
       al ≤ maxAccLog ∧
-      decodeFseLoop rdval.2 (1 <<< al) #[] 0 maxSymbols 10000 =
+      decodeFseLoop rdval.2 (1 <<< al) #[] 0 maxSymbols =
         .ok (0, probs, sym', br') := by
   unfold decodeFseDistribution at h
   cases hrd : br.readBits 4 with
@@ -55,7 +55,7 @@ theorem decodeFseDistribution_ok_decompose
     by_cases hgt : val.fst.toNat + 5 > maxAccLog
     · rw [if_pos hgt] at h; exact nomatch h
     · rw [if_neg hgt] at h
-      cases hdl : decodeFseLoop val.snd (1 <<< (val.fst.toNat + 5)) #[] 0 maxSymbols 10000 with
+      cases hdl : decodeFseLoop val.snd (1 <<< (val.fst.toNat + 5)) #[] 0 maxSymbols with
       | error e => simp only [hdl, reduceCtorEq] at h
       | ok dlval =>
         simp only [hdl] at h
