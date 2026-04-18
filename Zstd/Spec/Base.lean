@@ -19,7 +19,7 @@ these specification predicates.
 
 Split from `Zip/Spec/Zstd.lean` for file-size management.  This file
 contains predicates, instances, and basic correctness theorems (L1).
-Block-loop structural lemmas live in `Zip/Spec/ZstdBlockLoop.lean` (L2).
+Block-loop structural lemmas live in `Zstd/Spec/BlockLoop.lean` (L2).
 -/
 
 -- Unfold monadic `Except` bind/pure in hypothesis `h`.
@@ -28,28 +28,6 @@ Block-loop structural lemmas live in `Zip/Spec/ZstdBlockLoop.lean` (L2).
 set_option hygiene false in
 local macro "unfold_except" : tactic =>
   `(tactic| simp only [bind, Except.bind, pure, Except.pure] at h)
-
--- Unfold `decompressFrame`, substitute `hh` (parseFrameHeader result) and `hblocks`
--- (block-loop result), then handle the dictionary check and close both branches with grind.
--- This 19-line pattern is identical across all ~20 frame-level content theorems.
-set_option hygiene false in
-local macro "frame_from_blocks" : tactic =>
-  `(tactic| (
-    unfold Zstd.Native.decompressFrame at hframe
-    dsimp only [Bind.bind, Except.bind] at hframe
-    rw [hh] at hframe
-    simp only [pure, Except.pure] at hframe
-    split at hframe
-    · split at hframe
-      · exact nomatch hframe
-      · unfold Zstd.Native.decompressBlocks at hframe
-        rw [hblocks] at hframe
-        simp only [ByteArray.empty_append] at hframe
-        grind
-    · unfold Zstd.Native.decompressBlocks at hframe
-      rw [hblocks] at hframe
-      simp only [ByteArray.empty_append] at hframe
-      grind))
 
 namespace Zstd.Spec
 
@@ -143,14 +121,7 @@ theorem parseFrameHeader_magic (data : ByteArray) (pos : Nat)
     simp only [pure, Pure.pure] at h
     by_cases hmagic : (Binary.readUInt32LE data pos != Zstd.Native.zstdMagic) = true
     · rw [if_pos hmagic] at h; exact nomatch h
-    · rw [if_neg hmagic] at h
-      unfold validMagic
-      have heq : (Binary.readUInt32LE data pos == Zstd.Native.zstdMagic) = true := by
-        cases hb : (Binary.readUInt32LE data pos == Zstd.Native.zstdMagic)
-        · exfalso; apply hmagic; show (!(Binary.readUInt32LE data pos == Zstd.Native.zstdMagic)) = true
-          rw [hb]; rfl
-        · rfl
-      exact eq_of_beq heq
+    · simpa [validMagic] using (Bool.not_eq_true _).mp hmagic
 
 /-- When `parseBlockHeader` succeeds, the block type is not reserved.
     This follows from the `throw "Zstd: reserved block type"` guard. -/
@@ -327,12 +298,9 @@ theorem decompressRawBlock_content (data : ByteArray) (pos : Nat)
     (i : Nat) (hi : i < result.size) :
     result[i] = data[pos + i]'(by
       have := decompressRawBlock_size data pos blockSize result pos' h
+      have := decompressRawBlock_le_size data pos blockSize result pos' h
       have := decompressRawBlock_pos_eq data pos blockSize result pos' h
-      unfold Zstd.Native.decompressRawBlock at h
-      unfold_except
-      split at h
-      · exact nomatch h
-      · obtain ⟨rfl, rfl⟩ := h; simp only [ByteArray.size_extract] at hi; omega) := by
+      omega) := by
   unfold Zstd.Native.decompressRawBlock at h
   unfold_except
   split at h
