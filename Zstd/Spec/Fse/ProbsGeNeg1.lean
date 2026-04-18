@@ -239,44 +239,76 @@ open Zstd.Native in
     (accuracy log ≤ 9, so remaining ≤ 512). -/
 theorem decodeFseLoop_probs_ge_neg1
     {br : BitReader} {rem : Nat} {probs : Array Int32}
-    {sym ms fuel : Nat}
+    {sym ms : Nat}
     {rem' : Nat} {probs' : Array Int32} {sym' : Nat} {br' : BitReader}
-    (h : decodeFseLoop br rem probs sym ms fuel = .ok (rem', probs', sym', br'))
+    (h : decodeFseLoop br rem probs sym ms = .ok (rem', probs', sym', br'))
     (hbase : ∀ i : Fin probs.size, probs[i].toInt ≥ -1)
     (hrem : rem + 1 < 2 ^ 31) :
     ∀ i : Fin probs'.size, probs'[i].toInt ≥ -1 := by
-  induction fuel generalizing br rem probs sym with
-  | zero => simp only [decodeFseLoop, reduceCtorEq] at h
-  | succ fuel ih =>
-    rw [decodeFseLoop.eq_2] at h
-    by_cases hcond : ¬(rem > 0 ∧ sym < ms)
-    · rw [if_pos hcond] at h
-      simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨_, rfl, _, _⟩ := h; exact hbase
-    · rw [if_neg hcond] at h
-      cases hrpv : readProbValue br rem with
-      | error e => simp only [hrpv, reduceCtorEq] at h
-      | ok val =>
-        simp only [hrpv] at h
-        have hval_le := readProbValue_le hrpv (by omega)
-        by_cases hp0 : (Int32.ofNat val.fst - 1 == 0) = true
-        · rw [if_pos hp0] at h
-          cases hzr : decodeZeroRepeats val.2 (probs.push 0) (sym + 1) ms with
-          | error e => simp only [hzr, reduceCtorEq] at h
-          | ok val₂ =>
-            simp only [hzr] at h
-            have hpush := push_preserves_ge_neg1 hbase (show (0 : Int32).toInt ≥ -1 from by decide)
-            exact ih h (decodeZeroRepeats_probs_ge_neg1 hzr hpush) (by omega)
-        · rw [if_neg hp0] at h
-          by_cases hp1 : (Int32.ofNat val.fst - 1 == -1) = true
-          · rw [if_pos hp1] at h
-            exact ih h (push_preserves_ge_neg1 hbase (by simp [eq_of_beq hp1])) (by omega)
-          · rw [if_neg hp1] at h
-            by_cases hgt : int32ToNat (Int32.ofNat val.fst - 1) > rem
-            · rw [if_pos hgt] at h; exact nomatch h
-            · rw [if_neg hgt] at h
-              have hv : (Int32.ofNat val.fst - 1).toInt ≥ -1 :=
-                int32_ofNat_sub_one_ge_neg1 (by omega)
-              exact ih h (push_preserves_ge_neg1 hbase hv) (by omega)
+  suffices aux : ∀ (br : BitReader) (rem : Nat) (probs : Array Int32) (sym : Nat)
+      (_ : ∀ i : Fin probs.size, probs[i].toInt ≥ -1)
+      (_ : rem + 1 < 2 ^ 31),
+      ∀ {rem' : Nat} {probs' : Array Int32} {sym' : Nat} {br' : BitReader},
+      decodeFseLoop br rem probs sym ms = .ok (rem', probs', sym', br') →
+      ∀ i : Fin probs'.size, probs'[i].toInt ≥ -1 from aux _ _ _ _ hbase hrem h
+  intro br rem probs sym
+  induction br, rem, probs, sym using decodeFseLoop.induct (maxSymbols := ms) with
+  | case1 br rem probs sym hrun e hrpv =>
+    intro _ _ _ _ _ _ h
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h; exact nomatch h
+  | case2 br rem probs sym hrun val br₁ hrpv _prob hp0 e =>
+    rename_i hzr
+    intro hbase _ _ _ _ _ h
+    have hp0 : (Int32.ofNat val - 1 == 0) = true := hp0
+    have hzr : decodeZeroRepeats br₁ (probs.push 0) (sym + 1) ms = .error e := hzr
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0, ↓reduceIte, hzr] at h; exact nomatch h
+  | case3 br rem probs sym hrun val br₁ hrpv _prob hp0 probs₁ sym₁ br₂ hzr hadv =>
+    rename_i ih
+    intro hbase hrem _ _ _ _ h
+    have hp0 : (Int32.ofNat val - 1 == 0) = true := hp0
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0, ↓reduceIte, hzr, hadv, ↓reduceDIte] at h
+    have hpush := push_preserves_ge_neg1 hbase (show (0 : Int32).toInt ≥ -1 from by decide)
+    exact ih (decodeZeroRepeats_probs_ge_neg1 hzr hpush) hrem h
+  | case4 br rem probs sym hrun val br₁ hrpv _prob hp0 probs₁ sym₁ br₂ hzr =>
+    rename_i hadv
+    intro _ _ _ _ _ _ h
+    have hp0 : (Int32.ofNat val - 1 == 0) = true := hp0
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0, ↓reduceIte, hzr, hadv, ↓reduceDIte] at h; exact nomatch h
+  | case5 br rem probs sym hrun val br₁ hrpv _prob hp0 hp1 =>
+    rename_i ih
+    intro hbase hrem _ _ _ _ h
+    have hp0' : ¬(Int32.ofNat val - 1 == 0) = true := hp0
+    have hp1' : (Int32.ofNat val - 1 == -1) = true := hp1
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0', ↓reduceIte, hp1'] at h
+    exact ih (push_preserves_ge_neg1 hbase (by simp [eq_of_beq hp1])) (by omega) h
+  | case6 br rem probs sym hrun val br₁ hrpv _prob hp0 hp1 =>
+    rename_i hgt
+    intro _ _ _ _ _ _ h
+    have hp0' : ¬(Int32.ofNat val - 1 == 0) = true := hp0
+    have hp1' : ¬(Int32.ofNat val - 1 == -1) = true := hp1
+    have hgt' : int32ToNat (Int32.ofNat val - 1) > rem := hgt
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0', ↓reduceIte, hp1', hgt'] at h; exact nomatch h
+  | case7 br rem probs sym hrun val br₁ hrpv _prob hp0 hp1 =>
+    rename_i _probNat hgt ih
+    intro hbase hrem _ _ _ _ h
+    have hp0' : ¬(Int32.ofNat val - 1 == 0) = true := hp0
+    have hp1' : ¬(Int32.ofNat val - 1 == -1) = true := hp1
+    have hgt' : ¬int32ToNat (Int32.ofNat val - 1) > rem := hgt
+    have hval_le := readProbValue_le hrpv (by omega)
+    rw [decodeFseLoop.eq_def, dif_pos hrun, hrpv] at h
+    simp only [hp0', ↓reduceIte, hp1', hgt'] at h
+    have hv : (Int32.ofNat val - 1).toInt ≥ -1 :=
+      int32_ofNat_sub_one_ge_neg1 (by omega)
+    exact ih (push_preserves_ge_neg1 hbase hv) (by omega) h
+  | case8 br rem probs sym hrun =>
+    intro hbase _ _ _ _ _ h
+    rw [decodeFseLoop.eq_def, dif_neg hrun] at h
+    simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨_, rfl, _, _⟩ := h; exact hbase
 
 end Zstd.Spec.Fse
