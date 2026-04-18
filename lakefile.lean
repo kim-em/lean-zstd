@@ -1,13 +1,44 @@
 import Lake
 open System Lake DSL
 
+/-- Split a shell-style flag string on spaces, dropping empties. -/
+def splitFlags (s : String) : Array String :=
+  s.trimAscii.toString.splitOn " " |>.filter (· ≠ "") |>.toArray
+
+/-- Extract `-I` include paths from an env var containing compiler flags. -/
+def envIncludeFlags (var : String) : IO (Array String) := do
+  let some val := (← IO.getEnv var) | return #[]
+  return splitFlags val |>.filter (fun f => f.startsWith "-I")
+
+/-- Best-effort fallback for zstd headers when pkg-config is unavailable. -/
+def fallbackZstdIncludeFlags : IO (Array String) := do
+  for dir in #["/usr/include", "/usr/local/include"] do
+    let header := (⟨dir⟩ : System.FilePath) / "zstd.h"
+    if (← header.pathExists) then
+      return #[s!"-I{dir}"]
+  let out ← IO.Process.output {
+    cmd := "bash"
+    args := #["-lc", "compgen -G '/nix/store/*-zstd-*-dev/include' | head -n 1"]
+  }
+  if out.exitCode == 0 then
+    let dir := out.stdout.trimAscii.toString
+    if !dir.isEmpty then
+      return #[s!"-I{dir}"]
+  return #[]
+
 /-- Get zstd include flags, respecting `ZSTD_CFLAGS` env var override. -/
 def zstdCFlags : IO (Array String) := do
   if let some flags := (← IO.getEnv "ZSTD_CFLAGS") then
-    return flags.trimAscii.toString.splitOn " " |>.filter (· ≠ "") |>.toArray
+    return splitFlags flags
   let out ← IO.Process.output { cmd := "pkg-config", args := #["--cflags", "libzstd"] }
-  if out.exitCode != 0 then return #[]
-  return out.stdout.trimAscii.toString.splitOn " " |>.filter (· ≠ "") |>.toArray
+  if out.exitCode == 0 then
+    let flags := splitFlags out.stdout
+    if !flags.isEmpty then
+      return flags
+  let nixFlags ← envIncludeFlags "NIX_CFLAGS_COMPILE"
+  if !nixFlags.isEmpty then
+    return nixFlags
+  fallbackZstdIncludeFlags
 
 /-- Extract `-L` library paths from `NIX_LDFLAGS` (set by nix-shell). -/
 def nixLdLibPaths : IO (Array String) := do
@@ -36,6 +67,14 @@ def findStaticZstd (libPaths : Array String) : IO (Option System.FilePath) := do
                "/usr/lib64", "/usr/local/lib"] do
     let path := (⟨dir⟩ : System.FilePath) / "libzstd.a"
     if (← path.pathExists) then return some path
+  let out ← IO.Process.output {
+    cmd := "bash"
+    args := #["-lc", "compgen -G '/nix/store/*-zstd-*/lib/libzstd.a' | head -n 1"]
+  }
+  if out.exitCode == 0 then
+    let path : System.FilePath := ⟨out.stdout.trimAscii.toString⟩
+    if !path.toString.isEmpty && (← path.pathExists) then
+      return some path
   return none
 
 /-- Get link flags for zstd. Prefers static linking. -/
@@ -44,7 +83,7 @@ def linkFlags : IO (Array String) := do
   let zstdFlags ← do
     let out ← IO.Process.output { cmd := "pkg-config", args := #["--libs", "libzstd"] }
     if out.exitCode != 0 then pure #[]
-    else pure (out.stdout.trimAscii.toString.splitOn " " |>.filter (· ≠ "") |>.toArray)
+    else pure (splitFlags out.stdout)
   let allLibPaths := libPaths ++ zstdFlags.filter (·.startsWith "-L")
   if let some zstdStaticPath := (← findStaticZstd allLibPaths) then
     if Platform.isOSX then

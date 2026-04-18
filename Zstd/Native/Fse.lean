@@ -20,7 +20,7 @@ import ZipCommon.BitReader
 
 namespace Zstd.Native
 
-open Zip.Native (BitReader)
+open ZipCommon (BitReader)
 
 /-- A single cell in an FSE decoding table. -/
 structure FseCell where
@@ -129,9 +129,9 @@ def decodeFseLoop (br : BitReader) (remaining : Nat) (probs : Array Int32)
     Returns (probability array, accuracy log, updated BitReader).
     Probabilities: positive = count, -1 = "less than 1" (occupies 1 cell),
     0 = symbol not present. -/
-def decodeFseDistribution (br : Zip.Native.BitReader) (maxSymbols : Nat)
+def decodeFseDistribution (br : ZipCommon.BitReader) (maxSymbols : Nat)
     (maxAccLog : Nat := 11) :
-    Except String (Array Int32 × Nat × Zip.Native.BitReader) :=
+    Except String (Array Int32 × Nat × ZipCommon.BitReader) :=
   match br.readBits 4 with
   | .error e => .error e
   | .ok (accRaw, br) =>

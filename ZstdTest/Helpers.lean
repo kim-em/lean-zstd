@@ -84,6 +84,18 @@ def mkRandomData (n : Nat := 1000) : ByteArray := Id.run do
     result := result.push ((i * 73 + 137) % 256).toUInt8
   return result
 
+/-- Create text-like data of exactly `size` bytes by repeating a fixed sentence. -/
+def mkTextData (size : Nat) : ByteArray := Id.run do
+  let chunk := "Hello, world! This is a test of zstd compression from Lean 4. ".toUTF8
+  let mut result := ByteArray.empty
+  while result.size < size do
+    let remaining := size - result.size
+    if remaining ≥ chunk.size then
+      result := result ++ chunk
+    else
+      result := result ++ chunk.extract 0 remaining
+  result
+
 /-- All bytes are 0x42. Maximally compressible. -/
 def mkConstantData (size : Nat) : ByteArray := Id.run do
   let mut result := ByteArray.empty

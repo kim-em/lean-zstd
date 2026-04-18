@@ -24,7 +24,7 @@ Correctness theorems relate the implementation (`resolveOffset`,
 
 namespace Zstd.Native
 
-open Zip.Native (BitReader)
+open ZipCommon (BitReader)
 
 /-- `copyBytes` increases destination size by exactly `count`. -/
 theorem copyBytes_size (dst : ByteArray) (src : ByteArray) (srcPos count : Nat) :
@@ -364,7 +364,7 @@ private theorem parseSequencesHeader_pos_range (data : ByteArray) (pos : Nat)
     (numSeq : Nat) (modes : SequenceCompressionModes) (pos' : Nat)
     (h : parseSequencesHeader data pos = .ok (numSeq, modes, pos')) :
     pos < pos' ∧ pos' ≤ pos + 4 ∧ pos' ≤ data.size := by
-  simp only [parseSequencesHeader, Bind.bind, Except.bind, Pure.pure, Except.pure] at h
+  simp only [parseSequencesHeader, Pure.pure, Except.pure] at h
   split at h; · exact nomatch h
   split at h
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h; obtain ⟨-, -, rfl⟩ := h; omega
@@ -416,7 +416,7 @@ theorem parseSequencesHeader_byte0_zero (data : ByteArray) (pos : Nat)
     parseSequencesHeader data pos =
       .ok (0, { litLenMode := .predefined, offsetMode := .predefined,
                 matchLenMode := .predefined }, pos + 1) := by
-  simp only [parseSequencesHeader, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  simp only [parseSequencesHeader, Pure.pure, Except.pure]
   simp only [show ¬(data.size < pos + 1) from by omega, ↓reduceIte, dite_false,
     ← getElem!_pos, hbyte, beq_self_eq_true]
 
@@ -430,7 +430,7 @@ theorem parseSequencesHeader_numSeq_small (data : ByteArray) (pos : Nat)
     (hbyte0_lt : data[pos]!.toNat < 128) :
     numSeq = data[pos]!.toNat := by
   unfold parseSequencesHeader at h
-  simp only [Bind.bind, Except.bind, Pure.pure, Except.pure] at h
+  simp only [Pure.pure, Except.pure] at h
   -- Size check
   by_cases hsz : data.size < pos + 1
   · simp only [hsz, dite_true] at h; exact nomatch h
@@ -441,7 +441,7 @@ theorem parseSequencesHeader_numSeq_small (data : ByteArray) (pos : Nat)
     -- Inner size check
     by_cases hsz2 : data.size < pos + 2
     · simp only [hsz2, dite_true] at h; exact nomatch h
-    · simp only [hsz2, dite_false, ← getElem!_pos, Except.ok.injEq, Prod.mk.injEq] at h
+    · simp only [hsz2, dite_false, Except.ok.injEq, Prod.mk.injEq] at h
       exact h.1.symm
 
 /-- When 128 ≤ byte0 < 255, the number of sequences uses the 2-byte encoding:
@@ -454,7 +454,7 @@ theorem parseSequencesHeader_numSeq_medium (data : ByteArray) (pos : Nat)
     (hbyte0_lt : data[pos]!.toNat < 255) :
     numSeq = ((data[pos]!.toNat - 128) <<< 8) + data[pos + 1]!.toNat := by
   unfold parseSequencesHeader at h
-  simp only [Bind.bind, Except.bind, Pure.pure, Except.pure] at h
+  simp only [Pure.pure, Except.pure] at h
   -- Size check
   by_cases hsz : data.size < pos + 1
   · simp only [hsz, dite_true] at h; exact nomatch h
@@ -466,7 +466,7 @@ theorem parseSequencesHeader_numSeq_medium (data : ByteArray) (pos : Nat)
     -- Inner size check
     by_cases hsz2 : data.size < pos + 3
     · simp only [hsz2, dite_true] at h; exact nomatch h
-    · simp only [hsz2, dite_false, ← getElem!_pos, Except.ok.injEq, Prod.mk.injEq] at h
+    · simp only [hsz2, dite_false, Except.ok.injEq, Prod.mk.injEq] at h
       exact h.1.symm
 
 /-- For the 1-byte encoding (byte0 < 128), numSeq = 0 iff byte0 = 0.
@@ -490,7 +490,7 @@ theorem parseSequencesHeader_numSeq_zero_iff (data : ByteArray) (pos : Nat)
   · -- ← : byte0 = 0 → numSeq = 0
     intro hbyte0
     unfold parseSequencesHeader at h
-    simp only [Bind.bind, Except.bind, Pure.pure, Except.pure] at h
+    simp only [Pure.pure, Except.pure] at h
     by_cases hsz : data.size < pos + 1
     · simp only [hsz, dite_true] at h; exact nomatch h
     · simp only [hsz, dite_false, ← getElem!_pos] at h
@@ -508,7 +508,7 @@ theorem parseSequencesHeader_succeeds (data : ByteArray) (pos : Nat)
     (hsize : data.size ≥ pos + 4) :
     ∃ numSeq modes pos', parseSequencesHeader data pos = .ok (numSeq, modes, pos') := by
   unfold parseSequencesHeader
-  simp only [Bind.bind, Except.bind, Pure.pure, Except.pure,
+  simp only [Pure.pure, Except.pure,
     show ¬(data.size < pos + 1) from by omega, dite_false]
   split -- byte0 == 0
   · exact ⟨_, _, _, rfl⟩
@@ -529,7 +529,7 @@ theorem parseSequencesHeader_succeeds_zero (data : ByteArray) (pos : Nat)
     parseSequencesHeader data pos =
       .ok (0, { litLenMode := .predefined, offsetMode := .predefined,
                 matchLenMode := .predefined }, pos + 1) := by
-  simp only [parseSequencesHeader, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  simp only [parseSequencesHeader, Pure.pure, Except.pure]
   simp only [show ¬(data.size < pos + 1) from by omega, dite_false,
     ← getElem!_pos, show data[pos]!.toNat = 0 from by simp [hbyte], beq_self_eq_true,
     ↓reduceIte]
@@ -582,10 +582,11 @@ theorem resolveSingleFseTable_predefined_pos (maxSymbols maxAccLog : Nat)
            predefinedDist predefinedAccLog prevTable = .ok (table, pos')) :
     pos' = pos := by
   simp only [resolveSingleFseTable, bind, Except.bind, pure, Except.pure] at h
-  split at h
-  · simp only [reduceCtorEq] at h
-  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    exact h.2.symm
+  cases hbt : buildFseTable predefinedDist predefinedAccLog with
+  | error e => rw [hbt] at h; exact nomatch h
+  | ok tbl =>
+    rw [hbt] at h
+    exact (Prod.mk.inj (Except.ok.inj h)).2.symm
 
 /-- In predefined mode, the returned position is at most `data.size`.
     Since predefined mode doesn't advance the position (`pos' = pos`),
@@ -612,7 +613,7 @@ theorem resolveSingleFseTable_rle_pos (maxSymbols maxAccLog : Nat)
     (h : resolveSingleFseTable .rle maxSymbols maxAccLog data pos
            predefinedDist predefinedAccLog prevTable = .ok (table, pos')) :
     pos' = pos + 1 := by
-  simp only [resolveSingleFseTable, bind, Except.bind, pure, Except.pure] at h
+  simp only [resolveSingleFseTable, pure, Except.pure] at h
   split at h
   · exact nomatch h
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
@@ -631,7 +632,7 @@ theorem resolveSingleFseTable_rle_le_size (maxSymbols maxAccLog : Nat)
     pos' ≤ data.size := by
   have hpos_eq := resolveSingleFseTable_rle_pos _ _ _ _ _ _ _ _ _ h
   -- Extract the guard: success means ¬(data.size < pos + 1)
-  simp only [resolveSingleFseTable, bind, Except.bind, pure, Except.pure] at h
+  simp only [resolveSingleFseTable, pure, Except.pure] at h
   split at h
   · exact nomatch h
   · rename_i hguard
@@ -682,7 +683,7 @@ private theorem resolveSingleFseTable_fseCompressed_destruct (maxSymbols maxAccL
       decodeFseDistribution ⟨data, pos, 0⟩ maxSymbols maxAccLog = .ok (probs, accLog, br') ∧
       buildFseTable probs accLog = .ok table ∧
       pos' = (if br'.bitOff == 0 then br'.pos else br'.pos + 1) := by
-  simp only [resolveSingleFseTable, bind, Except.bind, pure, Except.pure] at h
+  simp only [resolveSingleFseTable, pure, Except.pure] at h
   cases hfse : decodeFseDistribution { data, pos, bitOff := 0 } maxSymbols maxAccLog with
   | error e => rw [hfse] at h; dsimp only [Bind.bind, Except.bind] at h; exact nomatch h
   | ok val =>
@@ -731,13 +732,13 @@ theorem resolveSingleFseTable_predefined_valid (maxSymbols maxAccLog : Nat)
            predefinedDist predefinedAccLog prevTable = .ok (table, pos'))
     (hpos : 0 < predefinedDist.size) :
     Zstd.Spec.Fse.ValidFseTable table.cells predefinedAccLog predefinedDist.size := by
-  simp only [resolveSingleFseTable, bind, Except.bind, pure, Except.pure] at h
+  simp only [resolveSingleFseTable, pure, Except.pure] at h
   cases hbt : buildFseTable predefinedDist predefinedAccLog with
   | error e => rw [hbt] at h; exact nomatch h
   | ok tbl =>
     rw [hbt] at h
-    simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, _⟩ := h
+    have htable : tbl = table := (Prod.mk.inj (Except.ok.inj h)).1
+    cases htable
     exact Zstd.Spec.Fse.buildFseTable_valid _ _ _ hbt hpos
 
 /-- In RLE mode, the returned table satisfies `ValidFseTable` with accuracy log 0
@@ -750,7 +751,7 @@ theorem resolveSingleFseTable_rle_valid (maxSymbols maxAccLog : Nat)
     (h : resolveSingleFseTable .rle maxSymbols maxAccLog data pos
            predefinedDist predefinedAccLog prevTable = .ok (table, pos')) :
     Zstd.Spec.Fse.ValidFseTable table.cells 0 256 := by
-  simp only [resolveSingleFseTable, bind, Except.bind, pure, Except.pure] at h
+  simp only [resolveSingleFseTable, pure, Except.pure] at h
   split at h
   · exact nomatch h
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
@@ -957,7 +958,7 @@ theorem resolveSingleFseTable_succeeds_predefined (maxSymbols maxAccLog : Nat)
     ∃ table,
       resolveSingleFseTable .predefined maxSymbols maxAccLog data pos
         predefinedDist predefinedAccLog prevTable = .ok (table, pos) := by
-  simp only [resolveSingleFseTable, bind, Except.bind, pure, Except.pure]
+  simp only [resolveSingleFseTable, pure, Except.pure]
   obtain ⟨t, ht⟩ := Zstd.Spec.Fse.buildFseTable_ok predefinedDist predefinedAccLog
   rw [ht]
   exact ⟨t, rfl⟩
@@ -971,7 +972,7 @@ theorem resolveSingleFseTable_succeeds_rle (maxSymbols maxAccLog : Nat)
     ∃ table,
       resolveSingleFseTable .rle maxSymbols maxAccLog data pos
         predefinedDist predefinedAccLog prevTable = .ok (table, pos + 1) := by
-  simp only [resolveSingleFseTable, bind, Except.bind, pure, Except.pure]
+  simp only [resolveSingleFseTable, pure, Except.pure]
   have : ¬(data.size < pos + 1) := by omega
   simp only [this, dite_false]
   exact ⟨_, rfl⟩
@@ -1463,7 +1464,8 @@ theorem decodeMatchLenValue_small (code : Nat) (extraBits : UInt32) (h : code �
     value is `baseline + extraBits.toNat`. -/
 private theorem matchLen_baselines_ge_three_aux :
     ∀ i : Fin matchLenExtraBits.size, (matchLenExtraBits[i.val]'i.isLt).1 ≥ 3 := by
-  decide_cbv
+  set_option cbv.warning false in
+    decide_cbv
 
 private theorem matchLen_baselines_ge_three (i : Nat) (hi : i < matchLenExtraBits.size) :
     (matchLenExtraBits[i]'hi).1 ≥ 3 :=
