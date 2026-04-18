@@ -1385,6 +1385,8 @@ theorem parseFrameHeader_succeeds (data : ByteArray) (pos : Nat)
     simp only [Zstd.Native.zstdMagic, bne_self_eq_false, Bool.false_eq_true, ite_false] at hres
     -- Guard 3: descriptor size
     rw [if_neg (show ¬(data.size < pos + 4 + 1) from by omega)] at hres
+    -- Reduce `Zstd.Native.readByte` to `data[...]!` so generalizes align with hsize.
+    simp only [readByte_eq_getElem] at hres
     -- Remaining guards depend on descriptor byte fields. Generalize them
     -- so case analysis gives consistent values in hsize.
     generalize hss : (data[pos + 4]! >>> 5 &&& 1 == 1) = ss at hres hsize
@@ -1436,7 +1438,7 @@ theorem parseFrameHeader_contentChecksum_eq (data : ByteArray) (pos : Nat)
           all_goals first
             | contradiction
             | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
-               obtain ⟨rfl, rfl⟩ := h; rfl)
+               obtain ⟨rfl, rfl⟩ := h; simp)
 
 set_option maxHeartbeats 400000 in
 /-- When `parseFrameHeader` succeeds, the `singleSegment` field equals
@@ -1465,7 +1467,7 @@ theorem parseFrameHeader_singleSegment_eq (data : ByteArray) (pos : Nat)
           all_goals first
             | contradiction
             | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
-               obtain ⟨rfl, rfl⟩ := h; rfl)
+               obtain ⟨rfl, rfl⟩ := h; simp)
 
 set_option maxHeartbeats 800000 in
 /-- When `parseFrameHeader` succeeds, the `dictionaryId` field is determined
@@ -1502,7 +1504,9 @@ theorem parseFrameHeader_dictionaryId_eq (data : ByteArray) (pos : Nat)
           all_goals first
             | contradiction
             | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
-               obtain ⟨rfl, rfl⟩ := h; grind)
+               obtain ⟨rfl, rfl⟩ := h
+               simp only [readByte_eq_getElem] at *
+               grind)
 
 /-! ## Window size characterizing properties -/
 

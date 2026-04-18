@@ -53,6 +53,15 @@ local macro "frame_from_blocks" : tactic =>
 
 namespace Zstd.Spec
 
+/-- `Zstd.Native.readByte` agrees with `data[offset]!` unconditionally: both
+    return 0 for out-of-bounds indices. -/
+@[simp] theorem readByte_eq_getElem (data : ByteArray) (offset : Nat) :
+    Zstd.Native.readByte data offset = data[offset]! := by
+  unfold Zstd.Native.readByte
+  by_cases h : offset < data.size
+  · rw [dif_pos h, getElem!_pos data offset h]
+  · rw [dif_neg h, getElem!_neg data offset h]; rfl
+
 /-! ## Magic number predicates -/
 
 /-- A valid Zstd frame magic number is exactly `0xFD2FB528` (RFC 8878 §3.1.1). -/
