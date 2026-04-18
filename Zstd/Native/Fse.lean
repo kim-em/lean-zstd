@@ -54,21 +54,33 @@ def pushZeros (probs : Array Int32) (symbolNum : Nat) :
     else
       (probs, symbolNum)
 
+set_option linter.unusedVariables false in
 /-- Inner loop for zero-repeat sequences in FSE distribution decoding.
-    Reads 2-bit repeat counts and pushes zeros until repeatCount < 3.
-    Uses fuel for termination (sufficient for any valid bitstream). -/
+    Reads 2-bit repeat counts and pushes zeros until `repeatCount < 3`.
+
+    Terminates on the remaining-bits measure `data.size * 8 - bitPos`: each
+    recursive call reads 2 bits, which strictly advances `bitPos` on valid
+    bitstreams (where `bitOff < 8`). The runtime guard `hadv` rejects degenerate
+    cases where the read did not advance — these cannot arise from a successful
+    `readBits 2` on a well-formed `BitReader`. -/
 def decodeZeroRepeats (br : BitReader) (probs : Array Int32)
-    (symbolNum : Nat) (maxSymbols : Nat) : Nat →
-    Except String (Array Int32 × Nat × BitReader)
-  | 0 => .error "FSE: zero repeat loop exceeded maximum iterations"
-  | fuel + 1 => do
-    let (repeatBits, br) ← br.readBits 2
+    (symbolNum : Nat) (maxSymbols : Nat) :
+    Except String (Array Int32 × Nat × BitReader) :=
+  match br.readBits 2 with
+  | .error e => .error e
+  | .ok (repeatBits, br') =>
     let repeatCount := repeatBits.toNat
     let (probs, symbolNum) := pushZeros probs symbolNum repeatCount maxSymbols
     if repeatCount == 3 then
-      decodeZeroRepeats br probs symbolNum maxSymbols fuel
+      if hadv : br'.data.size * 8 - (br'.pos * 8 + br'.bitOff) <
+                br.data.size * 8 - (br.pos * 8 + br.bitOff) then
+        decodeZeroRepeats br' probs symbolNum maxSymbols
+      else
+        .error "FSE: zero repeat loop did not advance bitstream"
     else
-      .ok (probs, symbolNum, br)
+      .ok (probs, symbolNum, br')
+termination_by br.data.size * 8 - (br.pos * 8 + br.bitOff)
+decreasing_by exact hadv
 
 /-- Read the probability value for the current symbol from the bitstream.
     Uses variable-length encoding: values below `lowThreshold` use
@@ -110,7 +122,7 @@ def decodeFseLoop (br : BitReader) (remaining : Nat) (probs : Array Int32)
       | .ok (val, br) =>
         let prob : Int32 := Int32.ofNat val - 1
         if (prob == 0) = true then
-          match decodeZeroRepeats br (probs.push 0) (symbolNum + 1) maxSymbols 1000 with
+          match decodeZeroRepeats br (probs.push 0) (symbolNum + 1) maxSymbols with
           | .error e => .error e
           | .ok (probs, symbolNum, br) =>
             decodeFseLoop br remaining probs symbolNum maxSymbols fuel

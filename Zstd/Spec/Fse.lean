@@ -112,27 +112,46 @@ theorem pushZeros_cellCount (probs : Array Int32) (sym n ms : Nat) :
 open Zstd.Native in
 /-- The zero-repeat inner loop only pushes zeros, so `cellCount` is preserved. -/
 theorem decodeZeroRepeats_cellCount
-    {br : BitReader} {probs : Array Int32} {sym ms fuel : Nat}
+    {br : BitReader} {probs : Array Int32} {sym ms : Nat}
     {probs' : Array Int32} {sym' : Nat} {br' : BitReader}
-    (h : decodeZeroRepeats br probs sym ms fuel = .ok (probs', sym', br')) :
+    (h : decodeZeroRepeats br probs sym ms = .ok (probs', sym', br')) :
     cellCount probs' = cellCount probs := by
-  induction fuel generalizing br probs sym with
-  | zero => simp only [decodeZeroRepeats, reduceCtorEq] at h
-  | succ fuel ih =>
-    unfold decodeZeroRepeats at h
-    dsimp only [Bind.bind, Except.bind] at h
-    cases hrb : br.readBits 2 with
-    | error e => rw [hrb] at h; dsimp only [Bind.bind, Except.bind] at h; exact nomatch h
-    | ok val =>
-      rw [hrb] at h; dsimp only [Bind.bind, Except.bind] at h
-      split at h
-      · -- repeatCount == 3, recursive call
-        have hpc := pushZeros_cellCount probs sym val.1.toNat ms
-        rw [ih h, hpc]
-      · -- repeatCount != 3, done
-        simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, _, _⟩ := h
-        exact pushZeros_cellCount probs sym val.1.toNat ms
+  suffices aux : ∀ (br : BitReader) (probs : Array Int32) (sym : Nat),
+      ∀ {probs' : Array Int32} {sym' : Nat} {br' : BitReader},
+      decodeZeroRepeats br probs sym ms = .ok (probs', sym', br') →
+      cellCount probs' = cellCount probs from aux _ _ _ h
+  intro br probs sym
+  induction br, probs, sym using decodeZeroRepeats.induct (maxSymbols := ms) with
+  | case1 br probs sym e hread =>
+    intro _ _ _ h; rw [decodeZeroRepeats.eq_def, hread] at h; exact nomatch h
+  | case2 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush hcnt hadv =>
+    rename_i ih
+    intro _ _ _ h
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : (repeatBits.toNat == 3) = true := hcnt
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hpush', hcnt', ↓reduceIte, hadv, ↓reduceDIte] at h
+    have hpc : cellCount probs₁ = cellCount probs := by
+      have := pushZeros_cellCount probs sym repeatBits.toNat ms
+      rw [hpush'] at this; exact this
+    rw [ih h, hpc]
+  | case3 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush hcnt =>
+    rename_i hadv
+    intro _ _ _ h
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : (repeatBits.toNat == 3) = true := hcnt
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hcnt', ↓reduceIte, hadv, ↓reduceDIte, reduceCtorEq] at h
+  | case4 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush =>
+    rename_i hcnt
+    intro _ _ _ h
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : ¬((repeatBits.toNat == 3) = true) := hcnt
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hpush', hcnt'] at h
+    obtain ⟨rfl, _, _⟩ := h
+    have := pushZeros_cellCount probs sym repeatBits.toNat ms
+    rw [hpush'] at this; exact this
 
 open Zstd.Native in
 /-- Main loop invariant: `remaining + cellCount probs` is preserved across
@@ -165,7 +184,7 @@ theorem decodeFseLoop_invariant
         by_cases hp0 : (Int32.ofNat val.fst - 1 == 0) = true
         · rw [if_pos hp0] at h
           -- Zero probability: split on decodeZeroRepeats
-          cases hzr : decodeZeroRepeats val.2 (probs.push 0) (sym + 1) ms 1000 with
+          cases hzr : decodeZeroRepeats val.2 (probs.push 0) (sym + 1) ms with
           | error e => simp only [hzr, reduceCtorEq] at h
           | ok val₂ =>
             simp only [hzr] at h
@@ -236,26 +255,54 @@ theorem pushZeros_probs_ge_neg1 (probs : Array Int32) (sym n ms : Nat)
 open Zstd.Native in
 /-- `decodeZeroRepeats` only pushes zeros, so `∀ i, probs[i].toInt ≥ -1` is preserved. -/
 theorem decodeZeroRepeats_probs_ge_neg1
-    {br : BitReader} {probs : Array Int32} {sym ms fuel : Nat}
+    {br : BitReader} {probs : Array Int32} {sym ms : Nat}
     {probs' : Array Int32} {sym' : Nat} {br' : BitReader}
-    (h : decodeZeroRepeats br probs sym ms fuel = .ok (probs', sym', br'))
+    (h : decodeZeroRepeats br probs sym ms = .ok (probs', sym', br'))
     (hbase : ∀ i : Fin probs.size, probs[i].toInt ≥ -1) :
     ∀ i : Fin probs'.size, probs'[i].toInt ≥ -1 := by
-  induction fuel generalizing br probs sym with
-  | zero => simp only [decodeZeroRepeats, reduceCtorEq] at h
-  | succ fuel ih =>
-    unfold decodeZeroRepeats at h
-    dsimp only [Bind.bind, Except.bind] at h
-    cases hrb : br.readBits 2 with
-    | error e => rw [hrb] at h; dsimp only [Bind.bind, Except.bind] at h; exact nomatch h
-    | ok val =>
-      rw [hrb] at h; dsimp only [Bind.bind, Except.bind] at h
-      have hpz := pushZeros_probs_ge_neg1 probs sym val.1.toNat ms hbase
-      split at h
-      · exact ih h hpz
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, _, _⟩ := h
-        exact hpz
+  suffices aux : ∀ (br : BitReader) (probs : Array Int32) (sym : Nat)
+      (_ : ∀ i : Fin probs.size, probs[i].toInt ≥ -1),
+      ∀ {probs' : Array Int32} {sym' : Nat} {br' : BitReader},
+      decodeZeroRepeats br probs sym ms = .ok (probs', sym', br') →
+      ∀ i : Fin probs'.size, probs'[i].toInt ≥ -1 from aux _ _ _ hbase h
+  intro br probs sym hbase
+  induction br, probs, sym using decodeZeroRepeats.induct (maxSymbols := ms) with
+  | case1 br probs sym e hread =>
+    intro _ _ _ h; rw [decodeZeroRepeats.eq_def, hread] at h; exact nomatch h
+  | case2 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush hcnt hadv =>
+    rename_i ih
+    intro _ _ _ h
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : (repeatBits.toNat == 3) = true := hcnt
+    have hpz : ∀ i : Fin probs₁.size, probs₁[i].toInt ≥ -1 := by
+      have hh := pushZeros_probs_ge_neg1 probs sym repeatBits.toNat ms hbase
+      have heq : probs₁ = (pushZeros probs sym repeatBits.toNat ms).1 :=
+        (congrArg Prod.fst hpush').symm
+      rw [heq]; exact hh
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hpush', hcnt', ↓reduceIte, hadv, ↓reduceDIte] at h
+    exact ih hpz h
+  | case3 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush hcnt =>
+    rename_i hadv
+    intro _ _ _ h
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : (repeatBits.toNat == 3) = true := hcnt
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hcnt', ↓reduceIte, hadv, ↓reduceDIte, reduceCtorEq] at h
+  | case4 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush =>
+    rename_i hcnt
+    intro _ _ _ h
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : ¬((repeatBits.toNat == 3) = true) := hcnt
+    have hpz : ∀ i : Fin probs₁.size, probs₁[i].toInt ≥ -1 := by
+      have hh := pushZeros_probs_ge_neg1 probs sym repeatBits.toNat ms hbase
+      have heq : probs₁ = (pushZeros probs sym repeatBits.toNat ms).1 :=
+        (congrArg Prod.fst hpush').symm
+      rw [heq]; exact hh
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hpush', hcnt'] at h
+    obtain ⟨rfl, _, _⟩ := h
+    exact hpz
 
 /-- `readBit` returns a value that is 0 or 1, since it masks with `&&& 1`. -/
 private theorem readBit_value_lt_2 {br : ZipCommon.BitReader} {val : UInt32}
@@ -414,7 +461,7 @@ theorem decodeFseLoop_probs_ge_neg1
         have hval_le := readProbValue_le hrpv (by omega)
         by_cases hp0 : (Int32.ofNat val.fst - 1 == 0) = true
         · rw [if_pos hp0] at h
-          cases hzr : decodeZeroRepeats val.2 (probs.push 0) (sym + 1) ms 1000 with
+          cases hzr : decodeZeroRepeats val.2 (probs.push 0) (sym + 1) ms with
           | error e => simp only [hzr, reduceCtorEq] at h
           | ok val₂ =>
             simp only [hzr] at h
@@ -1314,30 +1361,50 @@ private theorem readProbValue_bitPos_ge
 open Zstd.Native in
 /-- `decodeZeroRepeats` advances or preserves `bitPos` and maintains `bitOff < 8`. -/
 private theorem decodeZeroRepeats_bitPos_ge
-    {br : BitReader} {probs : Array Int32} {sym ms fuel : Nat}
+    {br : BitReader} {probs : Array Int32} {sym ms : Nat}
     {probs' : Array Int32} {sym' : Nat} {br' : BitReader}
-    (h : decodeZeroRepeats br probs sym ms fuel = .ok (probs', sym', br'))
+    (h : decodeZeroRepeats br probs sym ms = .ok (probs', sym', br'))
     (hbo : br.bitOff < 8) :
     br'.bitPos ≥ br.bitPos ∧ br'.bitOff < 8 := by
-  induction fuel generalizing br probs sym with
-  | zero => simp only [decodeZeroRepeats, reduceCtorEq] at h
-  | succ fuel ih =>
-    unfold decodeZeroRepeats at h
-    dsimp only [Bind.bind, Except.bind] at h
-    cases hrb : br.readBits 2 with
-    | error e => rw [hrb] at h; dsimp only [Bind.bind, Except.bind] at h; exact nomatch h
-    | ok val =>
-      rw [hrb] at h; dsimp only [Bind.bind, Except.bind] at h
-      have hbp := readBits_bitPos_eq br val.2 2 val.1 hrb hbo
-      have hbo₁ := readBits_bitOff_lt' br val.2 2 val.1 hrb hbo
-      split at h
-      · -- repeatCount == 3, recursive call
-        have ⟨hge, hbo'⟩ := ih h hbo₁
-        exact ⟨by rw [hbp] at hge; omega, hbo'⟩
-      · -- repeatCount != 3, done
-        simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨_, _, rfl⟩ := h
-        exact ⟨by rw [hbp]; omega, hbo₁⟩
+  suffices aux : ∀ (br : BitReader) (probs : Array Int32) (sym : Nat),
+      ∀ {probs' : Array Int32} {sym' : Nat} {br' : BitReader},
+      decodeZeroRepeats br probs sym ms = .ok (probs', sym', br') →
+      br.bitOff < 8 →
+      br'.bitPos ≥ br.bitPos ∧ br'.bitOff < 8 from aux _ _ _ h hbo
+  intro br probs sym
+  induction br, probs, sym using decodeZeroRepeats.induct (maxSymbols := ms) with
+  | case1 br probs sym e hread =>
+    intro _ _ _ h _
+    rw [decodeZeroRepeats.eq_def, hread] at h; exact nomatch h
+  | case2 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush hcnt hadv =>
+    rename_i ih
+    intro _ _ _ h hbo
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : (repeatBits.toNat == 3) = true := hcnt
+    have hbp := readBits_bitPos_eq br br₁ 2 repeatBits hread hbo
+    have hbo₁ := readBits_bitOff_lt' br br₁ 2 repeatBits hread hbo
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hpush', hcnt', ↓reduceIte, hadv, ↓reduceDIte] at h
+    have ⟨hge, hbo'⟩ := ih h hbo₁
+    exact ⟨by rw [hbp] at hge; omega, hbo'⟩
+  | case3 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush hcnt =>
+    rename_i hadv
+    intro _ _ _ h _
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : (repeatBits.toNat == 3) = true := hcnt
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hcnt', ↓reduceIte, hadv, ↓reduceDIte, reduceCtorEq] at h
+  | case4 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush =>
+    rename_i hcnt
+    intro _ _ _ h hbo
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : ¬((repeatBits.toNat == 3) = true) := hcnt
+    have hbp := readBits_bitPos_eq br br₁ 2 repeatBits hread hbo
+    have hbo₁ := readBits_bitOff_lt' br br₁ 2 repeatBits hread hbo
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hpush', hcnt'] at h
+    obtain ⟨_, _, rfl⟩ := h
+    exact ⟨by rw [hbp]; omega, hbo₁⟩
 
 open Zstd.Native in
 /-- `decodeFseLoop` preserves or advances `bitPos` and maintains `bitOff < 8`. -/
@@ -1367,7 +1434,7 @@ private theorem decodeFseLoop_bitPos_ge
         have ⟨hge_rpv, hbo_rpv⟩ := readProbValue_bitPos_ge hrpv hbo
         by_cases hp0 : (Int32.ofNat val.fst - 1 == 0) = true
         · rw [if_pos hp0] at h
-          cases hzr : decodeZeroRepeats val.2 (probs.push 0) (sym + 1) ms 1000 with
+          cases hzr : decodeZeroRepeats val.2 (probs.push 0) (sym + 1) ms with
           | error e => simp only [hzr, reduceCtorEq] at h
           | ok val₂ =>
             simp only [hzr] at h
@@ -1439,25 +1506,47 @@ theorem readProbValue_pos_le_size (br br' : BitReader) (remaining val : Nat)
 open Zstd.Native in
 /-- `decodeZeroRepeats` preserves `pos ≤ data.size`. -/
 private theorem decodeZeroRepeats_pos_le_size
-    {br : BitReader} {probs : Array Int32} {sym ms fuel : Nat}
+    {br : BitReader} {probs : Array Int32} {sym ms : Nat}
     {probs' : Array Int32} {sym' : Nat} {br' : BitReader}
-    (h : decodeZeroRepeats br probs sym ms fuel = .ok (probs', sym', br'))
+    (h : decodeZeroRepeats br probs sym ms = .ok (probs', sym', br'))
     (hbr : br.pos ≤ br.data.size) :
     br'.pos ≤ br'.data.size := by
-  induction fuel generalizing br probs sym with
-  | zero => simp only [decodeZeroRepeats, reduceCtorEq] at h
-  | succ fuel ih =>
-    unfold decodeZeroRepeats at h
-    dsimp only [Bind.bind, Except.bind] at h
-    cases hrb : br.readBits 2 with
-    | error e => rw [hrb] at h; dsimp only [Bind.bind, Except.bind] at h; exact nomatch h
-    | ok val =>
-      rw [hrb] at h; dsimp only [Bind.bind, Except.bind] at h
-      have hple₁ := readBits_pos_le_size br val.2 2 val.1 hrb hbr
-      split at h
-      · exact ih h hple₁
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨_, _, rfl⟩ := h; exact hple₁
+  suffices aux : ∀ (br : BitReader) (probs : Array Int32) (sym : Nat),
+      ∀ {probs' : Array Int32} {sym' : Nat} {br' : BitReader},
+      decodeZeroRepeats br probs sym ms = .ok (probs', sym', br') →
+      br.pos ≤ br.data.size →
+      br'.pos ≤ br'.data.size from aux _ _ _ h hbr
+  intro br probs sym
+  induction br, probs, sym using decodeZeroRepeats.induct (maxSymbols := ms) with
+  | case1 br probs sym e hread =>
+    intro _ _ _ h _
+    rw [decodeZeroRepeats.eq_def, hread] at h; exact nomatch h
+  | case2 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush hcnt hadv =>
+    rename_i ih
+    intro _ _ _ h hbr
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : (repeatBits.toNat == 3) = true := hcnt
+    have hple₁ := readBits_pos_le_size br br₁ 2 repeatBits hread hbr
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hpush', hcnt', ↓reduceIte, hadv, ↓reduceDIte] at h
+    exact ih h hple₁
+  | case3 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush hcnt =>
+    rename_i hadv
+    intro _ _ _ h _
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : (repeatBits.toNat == 3) = true := hcnt
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hcnt', ↓reduceIte, hadv, ↓reduceDIte, reduceCtorEq] at h
+  | case4 br probs sym repeatBits br₁ hread repeatCount probs₁ sym₁ hpush =>
+    rename_i hcnt
+    intro _ _ _ h hbr
+    have hpush' : pushZeros probs sym repeatBits.toNat ms = (probs₁, sym₁) := hpush
+    have hcnt' : ¬((repeatBits.toNat == 3) = true) := hcnt
+    have hple₁ := readBits_pos_le_size br br₁ 2 repeatBits hread hbr
+    rw [decodeZeroRepeats.eq_def, hread] at h
+    simp only [hpush', hcnt'] at h
+    obtain ⟨_, _, rfl⟩ := h
+    exact hple₁
 
 open Zstd.Native in
 /-- `decodeFseLoop` preserves `pos ≤ data.size`. -/
@@ -1484,7 +1573,7 @@ private theorem decodeFseLoop_pos_le_size
         have hple_rpv := readProbValue_pos_le_size br val.2 rem val.1 hrpv hbr
         by_cases hp0 : (Int32.ofNat val.fst - 1 == 0) = true
         · rw [if_pos hp0] at h
-          cases hzr : decodeZeroRepeats val.2 (probs.push 0) (sym + 1) ms 1000 with
+          cases hzr : decodeZeroRepeats val.2 (probs.push 0) (sym + 1) ms with
           | error e => simp only [hzr, reduceCtorEq] at h
           | ok val₂ =>
             simp only [hzr] at h
