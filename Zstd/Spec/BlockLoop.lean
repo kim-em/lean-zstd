@@ -8,11 +8,11 @@ preservation, position advancement, bounds, single-block content, and
 composed completeness for single raw/RLE blocks at both the block-loop
 and frame level.
 
-Split from `Zip/Spec/Zstd.lean` (L2 section) for file-size management.
+Split from `Zstd/Spec/Base.lean` (L2 section) for file-size management.
 -/
 
 -- Unfold monadic `Except` bind/pure in hypothesis `h`.
--- Duplicated from ZstdBase.lean because `local macro` is file-scoped.
+-- Duplicated from `Zstd/Spec/Base.lean` because `local macro` is file-scoped.
 set_option hygiene false in
 local macro "unfold_except" : tactic =>
   `(tactic| simp only [bind, Except.bind, pure, Except.pure] at h)
