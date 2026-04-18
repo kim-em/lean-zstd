@@ -53,6 +53,12 @@ def windowSizeFromDescriptor (winDesc : UInt8) : UInt64 :=
   let windowAdd := (windowBase / 8) * mantissa.toUInt64
   windowBase + windowAdd
 
+/-- Read a single byte with proven bounds: returns `data[offset]` when in
+    bounds, and 0 otherwise. See `Zstd.Spec.Base.readByte_eq_getElem` for
+    the equivalence with the built-in indexing operator. -/
+def readByte (data : ByteArray) (offset : Nat) : UInt8 :=
+  if h : offset < data.size then data[offset] else 0
+
 /-- Parse a Zstandard frame header starting at `pos` in `data`.
     Returns the parsed header and the position immediately after the header.
     Fails with a descriptive error message if the data is malformed or too short. -/
@@ -69,7 +75,7 @@ def parseFrameHeader (data : ByteArray) (pos : Nat) :
   -- Frame_Header_Descriptor (1 byte)
   if data.size < off + 1 then
     throw "Zstd: not enough data for frame header descriptor"
-  let desc := data[off]!
+  let desc : UInt8 := readByte data off
   off := off + 1
 
   let fcsFlag := (desc >>> 6).toNat       -- bits 7-6: Frame_Content_Size_Flag
@@ -82,7 +88,7 @@ def parseFrameHeader (data : ByteArray) (pos : Nat) :
   if !singleSegment then
     if data.size < off + 1 then
       throw "Zstd: not enough data for window descriptor"
-    windowSize := windowSizeFromDescriptor data[off]!
+    windowSize := windowSizeFromDescriptor (readByte data off)
     off := off + 1
 
   -- Dictionary_ID (0/1/2/4 bytes)
@@ -95,7 +101,7 @@ def parseFrameHeader (data : ByteArray) (pos : Nat) :
     throw "Zstd: not enough data for dictionary ID"
   let dictionaryId : Option UInt32 :=
     match didSize with
-    | 1 => some data[off]!.toUInt32
+    | 1 => some (readByte data off).toUInt32
     | 2 => some (Binary.readUInt16LE data off).toUInt32
     | 4 => some (Binary.readUInt32LE data off)
     | _ => none
@@ -111,7 +117,7 @@ def parseFrameHeader (data : ByteArray) (pos : Nat) :
     throw "Zstd: not enough data for frame content size"
   let contentSize : Option UInt64 :=
     match fcsSize with
-    | 1 => some data[off]!.toUInt64
+    | 1 => some (readByte data off).toUInt64
     | 2 =>
       -- 2-byte FCS has a +256 offset (RFC 8878 §3.1.1.4)
       some ((Binary.readUInt16LE data off).toUInt64 + 256)
