@@ -408,56 +408,73 @@ def decodeFseSymbolsWF (table : FseTable) (br : BackwardBitReader)
   let (initState, br) ← br.readBits table.accuracyLog
   decodeFseSymbolsWF.loop table br initState.toNat count #[]
 
+/-- Inner loop for `decodeFseSymbolsAll`. Decodes one pair of interleaved
+    symbols (state1 then state2) per recursive call, structurally recursing on
+    a `safety` budget.
+
+    Termination follows from structural recursion on `safety`. The caller
+    sizes the budget generously relative to the backward bitstream plus the
+    FSE table size, so that on well-formed inputs the two overflow checks
+    (`avail < numBits`) terminate the loop long before the budget runs out.
+    Reference FSE_decompress1X mirrors this two-state interleave and breaks
+    on overflow after either state. -/
+def decodeFseSymbolsAllLoop (table : FseTable) (br : BackwardBitReader)
+    (state1 state2 : Nat) (result : Array UInt8) :
+    Nat → Except String (Array UInt8 × BackwardBitReader)
+  | 0 => .ok (result, br)
+  | safety + 1 =>
+    let tableSize := 1 <<< table.accuracyLog
+    if state1 >= tableSize then
+      .error s!"FSE decode: state1 {state1} out of range (table size {tableSize})"
+    else
+      let cell1 := table.cells[state1]!
+      let result := result.push cell1.symbol.toUInt8
+      -- If not enough bits to advance state1, emit state2's symbol and stop.
+      if br.totalBitsRemaining < cell1.numBits.toNat then
+        let result :=
+          if state2 < tableSize then result.push table.cells[state2]!.symbol.toUInt8
+          else result
+        .ok (result, br)
+      else
+        match br.readBits cell1.numBits.toNat with
+        | .error e => .error e
+        | .ok (bits1, br') =>
+          let state1' := cell1.newState.toNat + bits1.toNat
+          if state2 >= tableSize then
+            .error s!"FSE decode: state2 {state2} out of range (table size {tableSize})"
+          else
+            let cell2 := table.cells[state2]!
+            let result := result.push cell2.symbol.toUInt8
+            -- If not enough bits to advance state2, emit state1's (updated) symbol and stop.
+            if br'.totalBitsRemaining < cell2.numBits.toNat then
+              let result :=
+                if state1' < tableSize then result.push table.cells[state1']!.symbol.toUInt8
+                else result
+              .ok (result, br')
+            else
+              match br'.readBits cell2.numBits.toNat with
+              | .error e => .error e
+              | .ok (bits2, br'') =>
+                let state2' := cell2.newState.toNat + bits2.toNat
+                decodeFseSymbolsAllLoop table br'' state1' state2' result safety
+
 /-- Decode FSE symbols until the backward bitstream is fully consumed.
     Used for Huffman weight decoding where the symbol count is not known in advance
-    (RFC 8878 §4.2.1). Uses a fuel parameter for termination.
-    Returns the decoded symbols as an array. -/
-def decodeFseSymbolsAll (table : FseTable) (br : BackwardBitReader)
-    (fuel : Nat := 4096) : Except String (Array UInt8 × BackwardBitReader) := do
-  let tableSize := 1 <<< table.accuracyLog
+    (RFC 8878 §4.2.1). Uses two interleaved FSE states (matching reference
+    FSE_decompress1X); the inner loop terminates structurally on a safety
+    budget sized generously relative to the backward bitstream plus the FSE
+    table. Returns the decoded symbols as an array. -/
+def decodeFseSymbolsAll (table : FseTable) (br : BackwardBitReader) :
+    Except String (Array UInt8 × BackwardBitReader) := do
   -- Initialize TWO interleaved states from stream (per reference FSE_decompress1X)
   let (initState1, br) ← br.readBits table.accuracyLog
   let (initState2, br) ← br.readBits table.accuracyLog
-  let mut state1 := initState1.toNat
-  let mut state2 := initState2.toNat
-  let mut br := br
-  let mut result : Array UInt8 := #[]
-  for _ in [:fuel] do
-    -- Decode from state1: lookup, emit, then update
-    if state1 >= tableSize then
-      throw s!"FSE decode: state1 {state1} out of range (table size {tableSize})"
-    let cell1 := table.cells[state1]!
-    result := result.push cell1.symbol.toUInt8
-    -- If not enough bits to advance state1, emit state2's symbol and break.
-    -- Reference: on overflow after state1 decode, FSE_GETSYMBOL(&state2) then break.
-    let avail1 := br.totalBitsRemaining
-    if avail1 < cell1.numBits.toNat then
-      if state2 < tableSize then
-        result := result.push table.cells[state2]!.symbol.toUInt8
-      break
-    let (bits1, br') ← br.readBits cell1.numBits.toNat
-    br := br'
-    state1 := cell1.newState.toNat + bits1.toNat
-    -- Decode from state2: lookup, emit, then update
-    if state2 >= tableSize then
-      throw s!"FSE decode: state2 {state2} out of range (table size {tableSize})"
-    let cell2 := table.cells[state2]!
-    result := result.push cell2.symbol.toUInt8
-    -- If not enough bits to advance state2, emit state1's updated symbol and break.
-    -- Reference: on overflow after state2 decode, FSE_GETSYMBOL(&state1) then break.
-    -- Note: state1 has already been updated above, so this emits the NEW state1's symbol.
-    let avail2 := br.totalBitsRemaining
-    if avail2 < cell2.numBits.toNat then
-      if state1 < tableSize then
-        result := result.push table.cells[state1]!.symbol.toUInt8
-      break
-    let (bits2, br') ← br.readBits cell2.numBits.toNat
-    br := br'
-    state2 := cell2.newState.toNat + bits2.toNat
-    -- Do NOT break on br.isFinished. The reference continues until overflow:
-    -- when all bits are consumed (completed), the next iteration emits state1's
-    -- symbol, then the avail check detects insufficient bits and breaks.
-  return (result, br)
+  -- Safety budget: the bitstream consumes at least 1 bit per non-overflow
+  -- round once numBits > 0, so `totalBitsRemaining` rounds bound the
+  -- bit-consuming iterations; add `2 * tableSize` to cover chains of
+  -- 0-bit cells (state pairs in the table cycle within that length).
+  let budget := br.totalBitsRemaining + 2 * (1 <<< table.accuracyLog)
+  decodeFseSymbolsAllLoop table br initState1.toNat initState2.toNat #[] budget
 
 /-- Predefined normalized probability distribution for literal length codes
     (RFC 8878 §6, Table 15). 36 symbols, accuracyLog = 6, tableSize = 64. -/
