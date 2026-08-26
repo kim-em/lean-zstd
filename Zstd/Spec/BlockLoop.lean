@@ -15,7 +15,7 @@ Split from `Zstd/Spec/Base.lean` (L2 section) for file-size management.
 -- Duplicated from `Zstd/Spec/Base.lean` because `local macro` is file-scoped.
 set_option hygiene false in
 local macro "unfold_except" : tactic =>
-  `(tactic| simp only [bind, Except.bind, pure, Except.pure] at h)
+  `(tactic| simp only [bind, Except.bind, pure, Except.pure, throw, throwThe, MonadExceptOf.throw] at h)
 
 namespace Zstd.Spec
 

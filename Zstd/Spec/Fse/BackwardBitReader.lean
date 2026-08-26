@@ -98,8 +98,7 @@ private theorem readBits_go_value_bound {n : Nat} (br : BackwardBitReader) (k : 
     simp only [BackwardBitReader.readBits.go, bind, Except.bind] at h
     split at h
     · exact nomatch h
-    · simp only [pure, Except.pure] at h
-      refine ih _ _ (by omega) ?_ h
+    · refine ih _ _ (by omega) ?_ h
       have hne : n - k = (n - (k + 1)) + 1 := by omega
       rw [hne]
       exact uint32_shift_or_bit_bound acc _ _ _ hacc
@@ -130,8 +129,7 @@ private theorem readBits_go_totalBitsRemaining (br : BackwardBitReader)
     simp only [BackwardBitReader.readBits.go, bind, Except.bind] at h
     split at h
     · exact nomatch h
-    · simp only [pure, Except.pure] at h
-      rename_i hbr_ne; simp only [beq_iff_eq] at hbr_ne
+    · rename_i hbr_ne; simp only [beq_iff_eq] at hbr_ne
       rw [ih _ _ h]
       simp only [BackwardBitReader.totalBitsRemaining, beq_iff_eq]
       by_cases h1 : br.bitsRemaining - 1 = 0 <;> by_cases h2 : br.bytePos > br.startPos <;>
@@ -149,8 +147,7 @@ private theorem readBits_go_totalBitsRemaining_ge (br : BackwardBitReader)
     simp only [BackwardBitReader.readBits.go, bind, Except.bind] at h
     split at h
     · exact nomatch h
-    · simp only [pure, Except.pure] at h
-      rename_i hbr_ne; simp only [beq_iff_eq] at hbr_ne
+    · rename_i hbr_ne; simp only [beq_iff_eq] at hbr_ne
       have hrec := ih _ _ h
       simp only [BackwardBitReader.totalBitsRemaining, beq_iff_eq] at hrec ⊢
       by_cases h1 : br.bitsRemaining - 1 = 0 <;> by_cases h2 : br.bytePos > br.startPos <;>
@@ -244,7 +241,7 @@ private theorem readBits_go_data_eq (br : BackwardBitReader)
   | succ k ih =>
     simp only [BackwardBitReader.readBits.go, bind, Except.bind] at h
     split at h; · exact nomatch h
-    simp only [pure, Except.pure] at h; rw [ih _ _ h]
+    rw [ih _ _ h]
     split <;> (try split) <;> rfl
 
 open Zstd.Native (BackwardBitReader) in
@@ -269,7 +266,7 @@ private theorem readBits_go_startPos_eq (br : BackwardBitReader)
   | succ k ih =>
     simp only [BackwardBitReader.readBits.go, bind, Except.bind] at h
     split at h; · exact nomatch h
-    simp only [pure, Except.pure] at h; rw [ih _ _ h]
+    rw [ih _ _ h]
     split <;> (try split) <;> rfl
 
 open Zstd.Native (BackwardBitReader) in

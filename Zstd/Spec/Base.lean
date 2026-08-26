@@ -27,7 +27,8 @@ Block-loop structural lemmas live in `Zstd/Spec/BlockLoop.lean` (L2).
 -- computations returning `Except`.
 set_option hygiene false in
 local macro "unfold_except" : tactic =>
-  `(tactic| simp only [bind, Except.bind, pure, Except.pure] at h)
+  `(tactic| simp only [bind, Except.bind, pure, Except.pure, throw, throwThe,
+              MonadExceptOf.throw] at h)
 
 namespace Zstd.Spec
 
@@ -121,7 +122,7 @@ theorem parseFrameHeader_magic (data : ByteArray) (pos : Nat)
     simp only [pure, Pure.pure] at h
     by_cases hmagic : (Binary.readUInt32LE data pos != Zstd.Native.zstdMagic) = true
     · rw [if_pos hmagic] at h; exact nomatch h
-    · simpa [validMagic] using (Bool.not_eq_true _).mp hmagic
+    · simpa [validMagic, Zstd.Native.zstdMagic] using (Bool.not_eq_true _).mp hmagic
 
 /-- When `parseBlockHeader` succeeds, the block type is not reserved.
     This follows from the `throw "Zstd: reserved block type"` guard. -/
@@ -319,7 +320,7 @@ theorem parseBlockHeader_succeeds (data : ByteArray) (pos : Nat)
     ∃ hdr afterHdr, Zstd.Native.parseBlockHeader data pos = .ok (hdr, afterHdr) := by
   unfold Zstd.Native.parseBlockHeader
   simp only [dif_neg (show ¬(data.size < pos + 3) from by omega),
-    bind, Except.bind, pure, Except.pure]
+    bind, Except.bind, pure, Except.pure, throw, throwThe, MonadExceptOf.throw]
   -- The match on typeVal has branches for 0, 1, 2, and the catch-all (reserved).
   -- htypeVal eliminates the catch-all, so one of the first three branches applies.
   -- Normalize data[pos]! to data[pos] so bv_decide sees consistent terms.
@@ -508,7 +509,7 @@ theorem skipSkippableFrame_succeeds (data : ByteArray) (pos : Nat)
     ∃ pos', Zstd.Native.skipSkippableFrame data pos = .ok pos' := by
   unfold Zstd.Native.skipSkippableFrame
   simp only [show ¬(data.size < pos + 8) from by omega, ↓reduceIte,
-    bind, Except.bind, pure, Except.pure]
+    bind, Except.bind, pure, Except.pure, throw, throwThe, MonadExceptOf.throw]
   have h1 : ¬(Binary.readUInt32LE data pos < 0x184D2A50) := Nat.not_lt.mpr hmagic_lo
   have h2 : ¬(Binary.readUInt32LE data pos > 0x184D2A5F) := Nat.not_lt.mpr hmagic_hi
   have h3 : ¬(data.size < pos + 8 + (Binary.readUInt32LE data (pos + 4)).toNat) :=

@@ -34,7 +34,7 @@ theorem copyBytes_getElem_lt (dst src : ByteArray) (srcPos count : Nat) (i : Nat
     rw [copyBytes.eq_1]
     simp only [Nat.succ_ne_zero, ↓reduceIte, Nat.add_sub_cancel]
     rw [ih (dst.push src[srcPos]!) (srcPos + 1) (by simp only [ByteArray.size_push]; omega)]
-    exact ByteArray.push_getElem!_lt dst src[srcPos]! i hi
+    exact ByteArray.getElem!_push_lt dst src[srcPos]! i hi
 
 /-- `copyBytes` content at new positions: the j-th new byte equals `src[srcPos + j]!`.
     For `j < count` with `srcPos + j < src.size`,
@@ -52,7 +52,7 @@ theorem copyBytes_getElem_ge (dst src : ByteArray) (srcPos count : Nat) (j : Nat
       -- The first new byte: after pushing src[srcPos]!, it's at dst.size
       simp only [Nat.add_zero]
       rw [copyBytes_getElem_lt _ _ _ _ dst.size (by simp only [ByteArray.size_push]; omega)]
-      exact ByteArray.push_getElem!_eq dst src[srcPos]!
+      exact ByteArray.getElem!_push_eq dst src[srcPos]!
     | succ j' =>
       -- Later new bytes: use the IH on the recursive call
       have : dst.size + (j' + 1) = (dst.push src[srcPos]!).size + j' := by
@@ -84,7 +84,7 @@ private theorem copyMatch_loop_getElem_lt (offset length start : Nat) (b : ByteA
   · rename_i hlt
     rw [copyMatch_loop_getElem_lt offset length start _ (k + 1) (by omega) i
       (by simp only [ByteArray.size_push]; omega)]
-    exact ByteArray.push_getElem!_lt b _ i hi
+    exact ByteArray.getElem!_push_lt b _ i hi
   · rfl
   termination_by length - k
 
@@ -117,14 +117,14 @@ private theorem copyMatch_loop_getElem_ge_nonoverlap (offset length start : Nat)
     simp only [Nat.add_zero]
     rw [copyMatch_loop_getElem_lt offset length start _ (k + 1) (by omega)
       b.size (by simp only [ByteArray.size_push]; omega)]
-    rw [ByteArray.push_getElem!_eq]
+    rw [ByteArray.getElem!_push_eq]
     exact hprefix _ hsk
   | succ j' =>
     have heq : b.size + (j' + 1) = (b.push b[start + k]!).size + j' := by
       simp only [ByteArray.size_push]; omega
     rw [heq, copyMatch_loop_getElem_ge_nonoverlap offset length start buf _ (k + 1) j'
       hoff hstart hreach (by simp only [ByteArray.size_push, hbsize]; omega)
-      (fun i hi => by rw [ByteArray.push_getElem!_lt _ _ _ (by omega)]; exact hprefix i hi)
+      (fun i hi => by rw [ByteArray.getElem!_push_lt _ _ _ (by omega)]; exact hprefix i hi)
       (by omega) (by omega)]
     congr 1; omega
   termination_by length - k
@@ -163,7 +163,7 @@ private theorem copyMatch_loop_getElem_ge (offset length start : Nat)
     simp only [Nat.add_zero]
     rw [copyMatch_loop_getElem_lt offset length start _ (k + 1) (by omega)
       b.size (by simp only [ByteArray.size_push]; omega)]
-    rw [ByteArray.push_getElem!_eq]
+    rw [ByteArray.getElem!_push_eq]
     exact hprefix _ hsk
   | succ j' =>
     have heq : b.size + (j' + 1) = (b.push b[start + (k % offset)]!).size + j' := by
@@ -171,7 +171,7 @@ private theorem copyMatch_loop_getElem_ge (offset length start : Nat)
     simp only [show k + (j' + 1) = k + 1 + j' from by omega]
     rw [heq, copyMatch_loop_getElem_ge offset length start buf _ (k + 1) j'
       hoff hstart (by simp only [ByteArray.size_push, hbsize]; omega)
-      (fun i hi => by rw [ByteArray.push_getElem!_lt _ _ _ (by omega)]; exact hprefix i hi)
+      (fun i hi => by rw [ByteArray.getElem!_push_lt _ _ _ (by omega)]; exact hprefix i hi)
       (by omega) (by omega)]
   termination_by length - k
 
