@@ -461,7 +461,7 @@ theorem weightSum_pos_of_exists_nonzero (weights : Array UInt8)
         simp only [Nat.shiftLeft_eq, Nat.one_mul]; exact Nat.two_pow_pos _)
       (Nat.le_add_left _ _)
   · -- Contradiction: weights.toList[↑i] = weights[i], whose toNat > 0
-    next hc => exact absurd (by simpa only [Array.getElem_toList] using hi) hc
+    next hc => exact absurd (by simpa only [Array.getElem_toList, Fin.getElem_fin] using hi) hc
 
 /-! ## Concrete validation examples -/
 
