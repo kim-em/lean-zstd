@@ -701,37 +701,63 @@ theorem decompressBlocksWF_succeeds_rle_then_raw (data : ByteArray)
     prevHuff prevFse history hsize2 htypeVal2 hlastBit2 hblockSize2 hwindow2 hpayload2
 /-! ## Frame header position advancement -/
 
-set_option maxHeartbeats 400000 in
-/-- When `parseFrameHeader` succeeds, the returned position advances by at
-    least 5 (4 magic bytes + 1 descriptor byte). In practice the minimum
-    is 6 bytes (singleSegment frames have at least 1 byte of content size). -/
-theorem parseFrameHeader_pos_ge_five (data : ByteArray) (pos : Nat)
-    (header : Zstd.Native.ZstdFrameHeader) (pos' : Nat)
-    (h : Zstd.Native.parseFrameHeader data pos = .ok (header, pos')) :
-    pos' ≥ pos + 5 := by
+/-- Decompose a successful `parseFrameHeader` call: characterize the
+    `contentChecksum` and `singleSegment` fields from the descriptor byte, and
+    bound the returned position (`pos + 5 ≤ pos' ≤ data.size`). This factors
+    out the case analysis shared by `_pos_ge_five`, `_le_size`,
+    `_contentChecksum_eq`, and `_singleSegment_eq`.
+
+    The `dsimp` unfolds `throw` alongside `Except.bind` so every error branch
+    iota-reduces to `Except.error _` immediately; without this the v4.33 `do`
+    elaboration leaves `bind (throw e) k` stuck, duplicating the continuation
+    `k` in every unreduced match arm (exponential blowup). Generalizing the
+    descriptor-byte fields before splitting keeps the `split` calls cheap. -/
+private theorem parseFrameHeader_ok_elim (data : ByteArray) (pos : Nat)
+    (hdr : Zstd.Native.ZstdFrameHeader) (pos' : Nat)
+    (h : Zstd.Native.parseFrameHeader data pos = .ok (hdr, pos')) :
+    hdr.contentChecksum = (data[pos + 4]! >>> 2 &&& 1 == 1) ∧
+    hdr.singleSegment = (data[pos + 4]! >>> 5 &&& 1 == 1) ∧
+    pos' ≥ pos + 5 ∧ pos' ≤ data.size := by
   unfold Zstd.Native.parseFrameHeader at h
-  dsimp only [Bind.bind, Except.bind] at h
+  dsimp only [Bind.bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
   by_cases h1 : data.size < pos + 4
   · rw [if_pos h1] at h; exact nomatch h
   · rw [if_neg h1] at h
-    simp only [pure, Pure.pure] at h
     by_cases h2 : (Binary.readUInt32LE data pos != Zstd.Native.zstdMagic) = true
     · rw [if_pos h2] at h; exact nomatch h
     · rw [if_neg h2] at h
       by_cases h3 : data.size < pos + 4 + 1
       · rw [if_pos h3] at h; exact nomatch h
       · rw [if_neg h3] at h
-        split at h
-        · exact nomatch h
-        · simp only [Except.pure] at h
-          repeat split at h
-          iterate 5 (all_goals (try (first | contradiction | (split at h))))
-          all_goals first
+        simp only [readByte_eq_getElem] at h
+        generalize hcc : (data[pos + 4]! >>> 2 &&& 1 == 1) = cc at h ⊢
+        generalize hss : (data[pos + 4]! >>> 5 &&& 1 == 1) = ss at h ⊢
+        generalize hdf : (data[pos + 4]! &&& 3).toNat = df at h
+        generalize hff : (data[pos + 4]! >>> 6).toNat = ff at h
+        by_cases hss_val : ss = true
+        · simp only [hss_val, Bool.not_true, Bool.false_eq_true, ite_false, ite_true] at h ⊢
+          repeat (first
             | contradiction
-            | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
-               obtain ⟨-, rfl⟩ := h; omega)
+            | (injection h with hpair; injection hpair with hh hp
+               exact ⟨by rw [← hh], by rw [← hh], by omega, by omega⟩)
+            | split at h)
+        · have hss_false : ss = false := by cases ss <;> first | rfl | exact absurd rfl hss_val
+          simp only [hss_false, Bool.not_false, ite_true, ite_false, Bool.false_eq_true] at h ⊢
+          repeat (first
+            | contradiction
+            | (injection h with hpair; injection hpair with hh hp
+               exact ⟨by rw [← hh], by rw [← hh], by omega, by omega⟩)
+            | split at h)
 
-set_option maxHeartbeats 400000 in
+/-- When `parseFrameHeader` succeeds, the returned position advances by at
+    least 5 (4 magic bytes + 1 descriptor byte). In practice the minimum
+    is 6 bytes (singleSegment frames have at least 1 byte of content size). -/
+theorem parseFrameHeader_pos_ge_five (data : ByteArray) (pos : Nat)
+    (header : Zstd.Native.ZstdFrameHeader) (pos' : Nat)
+    (h : Zstd.Native.parseFrameHeader data pos = .ok (header, pos')) :
+    pos' ≥ pos + 5 :=
+  (parseFrameHeader_ok_elim data pos header pos' h).2.2.1
+
 /-- When `parseFrameHeader` succeeds, the returned position is strictly greater
     than the input position. The header is at least 6 bytes (4 magic + 1
     descriptor + at least 1 byte for window descriptor or content size). -/
@@ -741,7 +767,6 @@ theorem parseFrameHeader_pos_gt (data : ByteArray) (pos : Nat)
     pos' > pos := by
   have := parseFrameHeader_pos_ge_five data pos header pos' h; omega
 
-set_option maxHeartbeats 400000 in
 /-- When `parseFrameHeader` succeeds, the returned position is within data bounds.
     Each stage of the header has a bounds check (`data.size < off + N → throw`),
     so on the success path, `off + N ≤ data.size` holds at every stage. The final
@@ -749,28 +774,8 @@ set_option maxHeartbeats 400000 in
 theorem parseFrameHeader_le_size (data : ByteArray) (pos : Nat)
     (header : Zstd.Native.ZstdFrameHeader) (pos' : Nat)
     (h : Zstd.Native.parseFrameHeader data pos = .ok (header, pos')) :
-    pos' ≤ data.size := by
-  unfold Zstd.Native.parseFrameHeader at h
-  dsimp only [Bind.bind, Except.bind] at h
-  by_cases h1 : data.size < pos + 4
-  · rw [if_pos h1] at h; exact nomatch h
-  · rw [if_neg h1] at h
-    simp only [pure, Pure.pure] at h
-    by_cases h2 : (Binary.readUInt32LE data pos != Zstd.Native.zstdMagic) = true
-    · rw [if_pos h2] at h; exact nomatch h
-    · rw [if_neg h2] at h
-      by_cases h3 : data.size < pos + 4 + 1
-      · rw [if_pos h3] at h; exact nomatch h
-      · rw [if_neg h3] at h
-        split at h
-        · exact nomatch h
-        · simp only [Except.pure] at h
-          repeat split at h
-          iterate 5 (all_goals (try (first | contradiction | (split at h))))
-          all_goals first
-            | contradiction
-            | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
-               obtain ⟨-, rfl⟩ := h; omega)
+    pos' ≤ data.size :=
+  (parseFrameHeader_ok_elim data pos header pos' h).2.2.2
 
 /-! ## Parsing completeness -/
 
@@ -792,7 +797,6 @@ def frameHeaderMinSize (desc : UInt8) : Nat :=
   4 + 1 + windowDescSize + didSize + fcsSize
 
 set_option maxRecDepth 4096 in
-set_option maxHeartbeats 800000 in
 set_option linter.unusedSimpArgs false in
 /-- When the data has the correct Zstd magic number and enough bytes for the
     full header (as determined by the descriptor byte at `pos + 4`),
@@ -809,18 +813,19 @@ theorem parseFrameHeader_succeeds (data : ByteArray) (pos : Nat)
   | ok val => obtain ⟨hdr, pos'⟩ := val; exact ⟨hdr, pos', rfl⟩
   | error e =>
     exfalso
-    -- Single-pass simp to reduce all monadic constructs
-    simp only [Zstd.Native.parseFrameHeader, Bind.bind, Except.bind,
-      Pure.pure, Except.pure] at hres
+    unfold Zstd.Native.parseFrameHeader at hres
+    -- Unfold `throw` alongside `Except.bind` so error branches iota-reduce
+    -- (see `parseFrameHeader_ok_elim`).
+    dsimp only [Bind.bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at hres
     unfold frameHeaderMinSize at hsize
     dsimp only [] at hsize
-    -- Guard 1: magic size
-    rw [if_neg (show ¬(data.size < pos + 4) from by omega)] at hres
-    -- Guard 2: magic value
-    rw [hmagic] at hres
-    simp only [Zstd.Native.zstdMagic, bne_self_eq_false, Bool.false_eq_true, ite_false] at hres
-    -- Guard 3: descriptor size
-    rw [if_neg (show ¬(data.size < pos + 4 + 1) from by omega)] at hres
+    -- Guards 1-3: magic size, magic value, descriptor size. The magic-value
+    -- guard is discharged with `if_neg` rather than by unfolding `zstdMagic`:
+    -- unfolding it would also put a concrete numeral into the error message's
+    -- `Nat.toDigits` call, whose fuel argument then makes `whnf` diverge.
+    rw [if_neg (show ¬(data.size < pos + 4) from by omega), hmagic,
+      if_neg (show ¬((Zstd.Native.zstdMagic != Zstd.Native.zstdMagic) = true) from by simp),
+      if_neg (show ¬(data.size < pos + 4 + 1) from by omega)] at hres
     -- Reduce `Zstd.Native.readByte` to `data[...]!` so generalizes align with hsize.
     simp only [readByte_eq_getElem] at hres
     -- Remaining guards depend on descriptor byte fields. Generalize them
@@ -847,65 +852,22 @@ theorem parseFrameHeader_succeeds (data : ByteArray) (pos : Nat)
 
 /-! ## parseFrameHeader field characterization -/
 
-set_option maxHeartbeats 400000 in
 /-- When `parseFrameHeader` succeeds, the `contentChecksum` field equals
     bit 2 of the descriptor byte at `pos + 4`. -/
 theorem parseFrameHeader_contentChecksum_eq (data : ByteArray) (pos : Nat)
     (hdr : Zstd.Native.ZstdFrameHeader) (pos' : Nat)
     (h : Zstd.Native.parseFrameHeader data pos = .ok (hdr, pos')) :
-    hdr.contentChecksum = ((data[pos + 4]! >>> 2) &&& 1 == 1) := by
-  unfold Zstd.Native.parseFrameHeader at h
-  dsimp only [Bind.bind, Except.bind] at h
-  by_cases h1 : data.size < pos + 4
-  · rw [if_pos h1] at h; exact nomatch h
-  · rw [if_neg h1] at h
-    simp only [pure, Pure.pure] at h
-    by_cases h2 : (Binary.readUInt32LE data pos != Zstd.Native.zstdMagic) = true
-    · rw [if_pos h2] at h; exact nomatch h
-    · rw [if_neg h2] at h
-      by_cases h3 : data.size < pos + 4 + 1
-      · rw [if_pos h3] at h; exact nomatch h
-      · rw [if_neg h3] at h
-        split at h
-        · exact nomatch h
-        · simp only [Except.pure] at h
-          repeat split at h
-          iterate 5 (all_goals (try (first | contradiction | (split at h))))
-          all_goals first
-            | contradiction
-            | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
-               obtain ⟨rfl, rfl⟩ := h; simp)
+    hdr.contentChecksum = ((data[pos + 4]! >>> 2) &&& 1 == 1) :=
+  (parseFrameHeader_ok_elim data pos hdr pos' h).1
 
-set_option maxHeartbeats 400000 in
 /-- When `parseFrameHeader` succeeds, the `singleSegment` field equals
     bit 5 of the descriptor byte at `pos + 4`. -/
 theorem parseFrameHeader_singleSegment_eq (data : ByteArray) (pos : Nat)
     (hdr : Zstd.Native.ZstdFrameHeader) (pos' : Nat)
     (h : Zstd.Native.parseFrameHeader data pos = .ok (hdr, pos')) :
-    hdr.singleSegment = ((data[pos + 4]! >>> 5) &&& 1 == 1) := by
-  unfold Zstd.Native.parseFrameHeader at h
-  dsimp only [Bind.bind, Except.bind] at h
-  by_cases h1 : data.size < pos + 4
-  · rw [if_pos h1] at h; exact nomatch h
-  · rw [if_neg h1] at h
-    simp only [pure, Pure.pure] at h
-    by_cases h2 : (Binary.readUInt32LE data pos != Zstd.Native.zstdMagic) = true
-    · rw [if_pos h2] at h; exact nomatch h
-    · rw [if_neg h2] at h
-      by_cases h3 : data.size < pos + 4 + 1
-      · rw [if_pos h3] at h; exact nomatch h
-      · rw [if_neg h3] at h
-        split at h
-        · exact nomatch h
-        · simp only [Except.pure] at h
-          repeat split at h
-          iterate 5 (all_goals (try (first | contradiction | (split at h))))
-          all_goals first
-            | contradiction
-            | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
-               obtain ⟨rfl, rfl⟩ := h; simp)
+    hdr.singleSegment = ((data[pos + 4]! >>> 5) &&& 1 == 1) :=
+  (parseFrameHeader_ok_elim data pos hdr pos' h).2.1
 
-set_option maxHeartbeats 800000 in
 /-- When `parseFrameHeader` succeeds, the `dictionaryId` field is determined
     by bits 0-1 of the descriptor byte (DID_Field_Size) and the subsequent
     0/1/2/4 bytes. The DID offset depends on the singleSegment flag:
@@ -920,29 +882,36 @@ theorem parseFrameHeader_dictionaryId_eq (data : ByteArray) (pos : Nat)
     (didFlag = 1 → hdr.dictionaryId = some data[didOff]!.toUInt32) ∧
     (didFlag = 2 → hdr.dictionaryId = some (Binary.readUInt16LE data didOff).toUInt32) ∧
     (didFlag = 3 → hdr.dictionaryId = some (Binary.readUInt32LE data didOff)) := by
+  -- Same normalization and case-analysis strategy as `parseFrameHeader_ok_elim`;
+  -- `grind` closes each success leaf by matching the concrete record fields
+  -- against the goal's `didFlag` implications.
   unfold Zstd.Native.parseFrameHeader at h
-  dsimp only [Bind.bind, Except.bind] at h
+  dsimp only [Bind.bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
   by_cases h1 : data.size < pos + 4
   · rw [if_pos h1] at h; exact nomatch h
   · rw [if_neg h1] at h
-    simp only [pure, Pure.pure] at h
     by_cases h2 : (Binary.readUInt32LE data pos != Zstd.Native.zstdMagic) = true
     · rw [if_pos h2] at h; exact nomatch h
     · rw [if_neg h2] at h
       by_cases h3 : data.size < pos + 4 + 1
       · rw [if_pos h3] at h; exact nomatch h
       · rw [if_neg h3] at h
-        split at h
-        · exact nomatch h
-        · simp only [Except.pure] at h
-          repeat split at h
-          iterate 5 (all_goals (try (first | contradiction | (split at h))))
-          all_goals first
+        simp only [readByte_eq_getElem] at h
+        generalize hss : (data[pos + 4]! >>> 5 &&& 1 == 1) = ss at h
+        generalize hdf : (data[pos + 4]! &&& 3).toNat = df at h
+        generalize hff : (data[pos + 4]! >>> 6).toNat = ff at h
+        by_cases hss_val : ss = true
+        · simp only [hss_val, Bool.not_true, Bool.false_eq_true, ite_false, ite_true] at h
+          repeat (first
             | contradiction
-            | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
-               obtain ⟨rfl, rfl⟩ := h
-               simp only [readByte_eq_getElem] at *
-               grind)
+            | (injection h with hpair; injection hpair with hh hp; grind)
+            | split at h)
+        · have hss_false : ss = false := by cases ss <;> first | rfl | exact absurd rfl hss_val
+          simp only [hss_false, Bool.not_false, ite_true, ite_false, Bool.false_eq_true] at h
+          repeat (first
+            | contradiction
+            | (injection h with hpair; injection hpair with hh hp; grind)
+            | split at h)
 
 /-! ## Window size characterizing properties -/
 

@@ -4,10 +4,6 @@ import Zstd
 
 set_option maxRecDepth 2048
 
-/-- Check that two byte arrays are equal. -/
-def ByteArray.beq (a b : ByteArray) : Bool :=
-  a.data == b.data
-
 /-- Read a test fixture from testdata/ directory. -/
 def readFixture (path : String) : IO ByteArray :=
   IO.FS.readBinFile s!"testdata/{path}"

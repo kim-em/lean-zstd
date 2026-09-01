@@ -278,7 +278,10 @@ theorem decompressFrame_le_size (data : ByteArray) (pos : Nat)
   | error e => simp only [hph, bind, Except.bind] at h; exact nomatch h
   | ok val =>
     obtain ⟨header, afterHeader⟩ := val
-    simp only [hph, bind, Except.bind, pure, Except.pure] at h
+    -- Unfold `throw` too so the checksum error branch iota-reduces; a stuck
+    -- `bind (throw e) k` would otherwise block `grind` from excluding it.
+    simp only [hph, bind, Except.bind, pure, Except.pure,
+      throw, throwThe, MonadExceptOf.throw] at h
     split at h
     · split at h
       · exact nomatch h
