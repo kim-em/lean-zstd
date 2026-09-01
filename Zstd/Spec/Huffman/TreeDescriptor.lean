@@ -29,11 +29,8 @@ private theorem parseHuffmanWeightsDirect_pos_eq (data : ByteArray) (pos numWeig
   · exact nomatch h
   · split at h
     · exact nomatch h
-    · simp only [pure, Pure.pure, Except.pure] at h
-      split at h
-      · exact nomatch h
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        exact h.2.symm
+    · simp only [pure, Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+      exact h.2.symm
 
 open Zstd.Native in
 /-- When `parseHuffmanWeightsFse` succeeds, the returned position equals
@@ -57,10 +54,8 @@ private theorem parseHuffmanWeightsFse_pos_eq (data : ByteArray) (pos compressed
         · -- decodeFseSymbolsAll
           split at h
           · exact nomatch h
-          · split at h
-            · exact nomatch h
-            · obtain ⟨-, rfl⟩ := h
-              rfl
+          · obtain ⟨-, rfl⟩ := h
+            rfl
 
 open Zstd.Native in
 /-- When `parseHuffmanWeightsDirect` succeeds, the returned position is within

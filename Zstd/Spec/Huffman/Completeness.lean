@@ -72,7 +72,8 @@ theorem parseLiteralsSection_succeeds_treeless (data : ByteArray) (pos : Nat)
                 compSize regenSize fourStreams = .ok result) :
     parseLiteralsSection data pos (some huffTable) =
       .ok (result, pos + headerBytes + compSize, some huffTable) := by
-  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure]
+  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure,
+      throw, throwThe, MonadExceptOf.throw]
   split
   · -- data.size < pos + 1 → absurd
     exfalso; omega
@@ -120,7 +121,8 @@ theorem parseLiteralsSection_succeeds_compressed (data : ByteArray) (pos : Nat)
                 regenSize fourStreams = .ok result) :
     parseLiteralsSection data pos prevHuffTree =
       .ok (result, pos + headerBytes + compSize, some huffTable) := by
-  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure]
+  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure,
+      throw, throwThe, MonadExceptOf.throw]
   split
   · -- data.size < pos + 1 → absurd
     exfalso; omega
@@ -295,7 +297,8 @@ theorem parseLiteralsSection_succeeds_raw (data : ByteArray) (pos : Nat)
   | .ok (lit, pos', ht) => exact ⟨lit, pos', ht, rfl⟩
   | .error _ =>
     exfalso
-    simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure] at hresult
+    simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure,
+      throw, throwThe, MonadExceptOf.throw] at hresult
     split at hresult
     · -- data.size < pos + 1
       have : rawLiteralsSectionSize data pos ≥ 1 := by
@@ -359,7 +362,8 @@ theorem parseLiteralsSection_succeeds_rle (data : ByteArray) (pos : Nat)
   | .ok (lit, pos', ht) => exact ⟨lit, pos', ht, rfl⟩
   | .error _ =>
     exfalso
-    simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure] at hresult
+    simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure,
+      throw, throwThe, MonadExceptOf.throw] at hresult
     split at hresult
     · -- data.size < pos + 1
       have : rleLiteralsSectionMinSize data pos ≥ 2 := by

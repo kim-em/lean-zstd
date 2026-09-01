@@ -25,7 +25,7 @@ private theorem parseCompressedLiteralsHeader_headerBytes_ge (data : ByteArray)
     (pos sizeFormat regen comp hdr : Nat) (fs : Bool)
     (h : parseCompressedLiteralsHeader data pos sizeFormat = .ok (regen, comp, hdr, fs)) :
     hdr ≥ 3 := by
-  simp only [parseCompressedLiteralsHeader, pure, Except.pure] at h
+  simp only [parseCompressedLiteralsHeader, pure, Except.pure, throw, throwThe, MonadExceptOf.throw] at h
   split at h
   · split at h
     · simp only [Except.ok.injEq, Prod.mk.injEq] at h; omega
@@ -48,7 +48,7 @@ theorem parseCompressedLiteralsHeader_headerSize (data : ByteArray) (pos : Nat)
     (sizeFormat ≤ 1 → headerSize = 3) ∧
     (sizeFormat = 2 → headerSize = 4) ∧
     (sizeFormat > 2 → headerSize = 5) := by
-  simp only [parseCompressedLiteralsHeader, pure, Except.pure] at h
+  simp only [parseCompressedLiteralsHeader, pure, Except.pure, throw, throwThe, MonadExceptOf.throw] at h
   split at h
   · split at h
     · simp only [Except.ok.injEq, Prod.mk.injEq] at h
@@ -78,7 +78,7 @@ theorem parseCompressedLiteralsHeader_fourStreams (data : ByteArray) (pos : Nat)
          = .ok (regen, comp, headerSize, fourStreams)) :
     (sizeFormat = 0 → fourStreams = false) ∧
     (sizeFormat ≥ 1 → fourStreams = true) := by
-  simp only [parseCompressedLiteralsHeader, pure, Except.pure] at h
+  simp only [parseCompressedLiteralsHeader, pure, Except.pure, throw, throwThe, MonadExceptOf.throw] at h
   split at h
   · split at h
     · rename_i hsf _
@@ -112,7 +112,7 @@ theorem parseCompressedLiteralsHeader_regen_bound (data : ByteArray) (pos : Nat)
     (h : parseCompressedLiteralsHeader data pos sizeFormat
          = .ok (regen, comp, headerSize, fourStreams)) :
     regen ≤ 0x3FFFF := by
-  simp only [parseCompressedLiteralsHeader, pure, Except.pure] at h
+  simp only [parseCompressedLiteralsHeader, pure, Except.pure, throw, throwThe, MonadExceptOf.throw] at h
   split at h
   · split at h
     · simp only [Except.ok.injEq, Prod.mk.injEq] at h
@@ -139,7 +139,7 @@ private theorem parseLiteralsSection_simple_spec (data : ByteArray) (pos : Nat)
     (hlit : (data[pos]! &&& 3).toNat ≤ 1)
     (h : parseLiteralsSection data pos prevHuffTree = .ok (literals, pos', huffTable)) :
     pos' > pos ∧ huffTable = none ∧ pos' ≤ data.size := by
-  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure] at h
+  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure, throw, throwThe, MonadExceptOf.throw] at h
   split at h
   · exact nomatch h
   · split at h
@@ -222,7 +222,7 @@ private theorem parseLiteralsSection_compressed_spec (data : ByteArray) (pos : N
     (hlit : (data[pos]! &&& 3).toNat ≥ 2)
     (h : parseLiteralsSection data pos prevHuffTree = .ok (literals, pos', huffTable)) :
     pos' > pos ∧ pos' ≤ data.size := by
-  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure] at h
+  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure, throw, throwThe, MonadExceptOf.throw] at h
   split at h
   · exact nomatch h
   · split at h
@@ -314,7 +314,7 @@ theorem parseLiteralsSection_raw_eq_extract (data : ByteArray) (pos : Nat)
     (h : parseLiteralsSection data pos prevHuffTree = .ok (literals, pos', huffTable)) :
     ∃ afterHeader, afterHeader > pos ∧ afterHeader ≤ pos' ∧
       literals = data.extract afterHeader pos' := by
-  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure] at h
+  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure, throw, throwThe, MonadExceptOf.throw] at h
   split at h
   · exact nomatch h
   · split at h
@@ -368,7 +368,7 @@ theorem parseLiteralsSection_rle_all_eq (data : ByteArray) (pos : Nat)
     (h : parseLiteralsSection data pos prevHuffTree = .ok (literals, pos', huffTable))
     (i j : Nat) (hi : i < literals.size) (hj : j < literals.size) :
     literals[i] = literals[j] := by
-  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure] at h
+  simp only [parseLiteralsSection, bind, Except.bind, pure, Except.pure, throw, throwThe, MonadExceptOf.throw] at h
   split at h
   · exact nomatch h
   · split at h
