@@ -37,7 +37,7 @@ theorem decompressZstd_single_frame_contentSize (data : ByteArray)
    Zstd.Spec.decompressFrame_contentSize_eq data 0 content pos' hframe header headerPos hh n hn⟩
 
 /-- When `decompressZstd` succeeds on a single-frame input whose frame header
-    has `contentChecksum = true`, the output's XXH64 upper 32 bits match the
+    has `contentChecksum = true`, the output's XXH64 lower 32 bits match the
     checksum stored in the 4 bytes before `pos'` in the input.
     Composes `decompressZstd_single_frame` with `decompressFrame_checksum_valid`. -/
 theorem decompressZstd_single_frame_checksum (data : ByteArray)
@@ -48,7 +48,7 @@ theorem decompressZstd_single_frame_checksum (data : ByteArray)
     (hh : Zstd.Native.parseFrameHeader data 0 = .ok (header, headerPos))
     (hc : header.contentChecksum = true) :
     Zstd.Native.decompressZstd data = .ok content ∧
-      XxHash64.xxHash64Upper32 content = Binary.readUInt32LE data (pos' - 4) :=
+      XxHash64.xxHash64Lower32 content = Binary.readUInt32LE data (pos' - 4) :=
   ⟨decompressZstd_single_frame data content pos' hframe hend,
    Zstd.Spec.decompressFrame_checksum_valid data 0 content pos' hframe header headerPos hh hc⟩
 

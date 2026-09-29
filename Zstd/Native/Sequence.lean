@@ -156,8 +156,10 @@ def resolveOffset (rawOffset : Nat) (history : Array Nat) (literalLength : Nat) 
       let history' := #[offset, history[0]'(by omega), history[1]'(by omega)]
       (offset, history')
     | 3 =>
+      -- A new offset (Repeat_Offset_1 - 1): it goes in front and the others shift down,
+      -- as for any offset other than Repeat_Offset_1 (RFC 8878 §3.1.1.5).
       let offset := history[0]'(by omega) - 1
-      let history' := #[offset, history[1]'(by omega), history[2]'(by omega)]
+      let history' := #[offset, history[0]'(by omega), history[1]'(by omega)]
       (offset, history')
     | _ => (1, history)  -- unreachable
 

@@ -158,12 +158,13 @@ theorem resolveOffset_shifted2_val (history : Array Nat)
 
 /-- When `rawOffset = 3`, `history.size = 3`, and `literalLength = 0` (shifted mode),
     the resolved offset equals `history[0]! - 1` (most recent minus one) and the history
-    becomes `#[history[0]! - 1, history[1]!, history[2]!]`. RFC 8878 §3.1.1.5 shifted case.
+    becomes `#[history[0]! - 1, history[0]!, history[1]!]`: a new offset goes in front and
+    the others shift down. RFC 8878 §3.1.1.5 shifted case.
     This is the special case used for run-length encoding patterns. -/
 theorem resolveOffset_shifted3_val (history : Array Nat)
     (_hsize : history.size = 3) :
     (resolveOffset 3 history 0).1 = history[0]! - 1
-    ∧ (resolveOffset 3 history 0).2 = #[history[0]! - 1, history[1]!, history[2]!] := by
+    ∧ (resolveOffset 3 history 0).2 = #[history[0]! - 1, history[0]!, history[1]!] := by
   simp only [resolveOffset, show ¬(history.size < 3) from by omega, dite_false,
     show ¬(3 > 3) from by omega, show ¬(0 > 0) from by omega,
     ↓reduceIte, ← getElem!_pos, and_self]
@@ -221,7 +222,7 @@ theorem resolveOffset_history_valid_repeat (rawOffset litLen : Nat)
     split
     · exact validOffsetHistory_mk3 _ _ _ h2pos h0pos h1pos
     · have h02 := hshift ⟨by omega, rfl⟩
-      exact validOffsetHistory_mk3 _ _ _ (by omega) h1pos h2pos
+      exact validOffsetHistory_mk3 _ _ _ (by omega) h0pos h1pos
   · omega  -- rawOffset ≥ 4
 
 /-- When `resolveOffset` returns a nonzero offset and the input history is valid,
