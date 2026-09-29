@@ -327,4 +327,21 @@ def ZstdTest.ZstdNativeFrame.tests : IO Unit := do
     unless e.contains "checksum mismatch" do
       throw (IO.userError s!"system-hello.zst with a corrupted checksum: unexpected error: {e}")
 
+  -- Test 29: a frame (from `zstd -19 --no-check`) with a sequence whose literal length
+  -- is 0 and whose offset value is 3, i.e. Repeat_Offset_1 - 1. That is a new offset:
+  -- it goes in front of the history and the others shift down (RFC 8878 §3.1.1.5).
+  -- Keeping the old second and third entries decodes this frame to the wrong bytes,
+  -- and with no checksum nothing notices.
+  let rep ← readFixture "zstd/interop/repeat-offset-ll0.zst"
+  let repRaw ← readFixture "zstd/interop/repeat-offset-ll0.raw"
+  match Zstd.Native.decompressZstd rep with
+  | .ok result =>
+    unless result.data == repRaw.data do
+      throw (IO.userError "repeat-offset-ll0.zst: decompressed data mismatch")
+  | .error e => throw (IO.userError s!"repeat-offset-ll0.zst: unexpected error: {e}")
+  match Zstd.Native.resolveOffset 3 #[10, 20, 30] 0 with
+  | (off, hist) =>
+    unless off == 9 && hist == #[9, 10, 20] do
+      throw (IO.userError s!"resolveOffset 3 (literalLength 0): expected (9, #[9, 10, 20]), got ({off}, {hist})")
+
   IO.println "ZstdNativeFrame tests: OK"
