@@ -19,7 +19,7 @@ import Zstd.Native.Sequence
   (`decompressZstd`) that loops over concatenated frames, skipping
   skippable frames (RFC 8878 §3.1.2) and concatenating output from
   multiple Zstd frames.  Content checksum verification uses XXH64
-  (upper 32 bits).
+  (lower 32 bits).
 
   Huffman-compressed literals and sequence decoding are in
   `Zstd.Native.ZstdHuffman` and `Zstd.Native.ZstdSequence` respectively.
@@ -275,7 +275,7 @@ def decompressBlocks (data : ByteArray) (pos : Nat) (windowSize : UInt64 := 0) :
 
 /-- Decompress a single Zstd frame starting at `pos` in `data`.
     Parses the frame header, decompresses all blocks, verifies the optional
-    content checksum (upper 32 bits of XXH64 with seed 0), and validates
+    content checksum (lower 32 bits of XXH64 with seed 0), and validates
     content size if specified in the header.
     Returns decompressed data and position after the frame. -/
 def decompressFrame (data : ByteArray) (pos : Nat) :
@@ -286,13 +286,13 @@ def decompressFrame (data : ByteArray) (pos : Nat) :
     if dictId != 0 then
       throw s!"Zstd: dictionary decompression not supported (dictionary ID: {dictId})"
   let (content, afterBlocks) ← decompressBlocks data afterHeader header.windowSize
-  -- Content checksum: upper 32 bits of XXH64 (RFC 8878 §3.1.1) if flagged
+  -- Content checksum: lower 32 bits of XXH64 (RFC 8878 §3.1.1) if flagged
   let afterFrame := if header.contentChecksum then afterBlocks + 4 else afterBlocks
   if header.contentChecksum then
     if data.size < afterFrame then
       throw "Zstd: not enough data for content checksum"
     let expected := Binary.readUInt32LE data afterBlocks
-    let actual := XxHash64.xxHash64Upper32 content
+    let actual := XxHash64.xxHash64Lower32 content
     if expected != actual then
       throw s!"Zstd: content checksum mismatch: expected 0x{String.ofList (Nat.toDigits 16 expected.toNat)}, got 0x{String.ofList (Nat.toDigits 16 actual.toNat)}"
   -- Validate content size if specified in the header

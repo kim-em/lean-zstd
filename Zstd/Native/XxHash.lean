@@ -5,8 +5,9 @@ import ZipCommon.Binary
 
 Pure Lean implementation of the XXH64 hash function (64-bit variant of xxHash
 by Yann Collet). Used by Zstandard (RFC 8878) for optional content checksums:
-the upper 32 bits of `xxHash64 data 0` are stored as a 32-bit checksum at the
-end of each Zstd frame that has the `Content_Checksum` flag set.
+the lower 32 bits of `xxHash64 data 0` are stored as a 32-bit checksum at the
+end of each Zstd frame that has the `Content_Checksum` flag set (RFC 8878 §3.1.1:
+"the 4 lowest bytes of the XXH64 digest").
 
 Reference: https://github.com/Cyan4973/xxHash/blob/dev/doc/xxhash_spec.md
 -/
@@ -125,9 +126,9 @@ def xxHash64 (data : ByteArray) (seed : UInt64 := 0) : UInt64 :=
   let h := processRemaining h data (len - remaining) remaining
   avalanche h
 
-/-- Compute the upper 32 bits of XXH64 with seed 0.
+/-- Compute the lower 32 bits of XXH64 with seed 0.
     This is the checksum format used by Zstandard (RFC 8878 §3.1.1). -/
-def xxHash64Upper32 (data : ByteArray) : UInt32 :=
-  (xxHash64 data 0 >>> 32).toUInt32
+def xxHash64Lower32 (data : ByteArray) : UInt32 :=
+  (xxHash64 data 0).toUInt32
 
 end XxHash64

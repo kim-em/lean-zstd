@@ -31,15 +31,15 @@ def ZstdTest.XxHashNative.tests : IO Unit := do
   unless hash64 == 0xF7C67301DB6713F0 do
     throw (IO.userError s!"XXH64 64 bytes: expected 0xF7C67301DB6713F0, got {hash64}")
 
-  -- Test 6: xxHash64Upper32 on empty input
-  let upper32Empty := XxHash64.xxHash64Upper32 ByteArray.empty
-  unless upper32Empty == 0xEF46DB37 do
-    throw (IO.userError s!"XXH64Upper32 empty: expected 0xEF46DB37, got {upper32Empty}")
+  -- Test 6: xxHash64Lower32 (the Zstd checksum) on empty input
+  let lower32Empty := XxHash64.xxHash64Lower32 ByteArray.empty
+  unless lower32Empty == 0x51D8E999 do
+    throw (IO.userError s!"XXH64Lower32 empty: expected 0x51D8E999, got {lower32Empty}")
 
-  -- Test 7: xxHash64Upper32 on "Hello World"
-  let upper32Hello := XxHash64.xxHash64Upper32 "Hello World".toUTF8
-  unless upper32Hello == 0x6334D207 do
-    throw (IO.userError s!"XXH64Upper32 Hello World: expected 0x6334D207, got {upper32Hello}")
+  -- Test 7: xxHash64Lower32 on "Hello World"
+  let lower32Hello := XxHash64.xxHash64Lower32 "Hello World".toUTF8
+  unless lower32Hello == 0x19245BC2 do
+    throw (IO.userError s!"XXH64Lower32 Hello World: expected 0x19245BC2, got {lower32Hello}")
 
   -- Test 8: large input (exercises multiple stripes + remaining bytes)
   let big ← mkTestData  -- 6200 bytes

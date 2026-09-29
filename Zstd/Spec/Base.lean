@@ -434,7 +434,7 @@ theorem decompressFrame_contentSize_eq (data : ByteArray) (pos : Nat)
   grind
 
 /-- When `decompressFrame` succeeds and the frame header has `contentChecksum = true`,
-    the output's XXH64 upper 32 bits matches the checksum stored in the 4 bytes
+    the output's XXH64 lower 32 bits matches the checksum stored in the 4 bytes
     before `pos'` in the input. This follows from the checksum verification guard
     in `decompressFrame`. -/
 theorem decompressFrame_checksum_valid (data : ByteArray) (pos : Nat)
@@ -443,7 +443,7 @@ theorem decompressFrame_checksum_valid (data : ByteArray) (pos : Nat)
     (header : Zstd.Native.ZstdFrameHeader) (headerPos : Nat)
     (hh : Zstd.Native.parseFrameHeader data pos = .ok (header, headerPos))
     (hc : header.contentChecksum = true) :
-    XxHash64.xxHash64Upper32 output =
+    XxHash64.xxHash64Lower32 output =
       Binary.readUInt32LE data (pos' - 4) := by
   unfold Zstd.Native.decompressFrame at h
   dsimp only [Bind.bind, Except.bind] at h

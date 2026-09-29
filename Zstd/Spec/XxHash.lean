@@ -4,7 +4,7 @@ import Zstd.Native.XxHash
 # XXH64 Specification Predicates (xxHash specification)
 
 Formal specification of the XXH64 hash function used by Zstandard (RFC 8878)
-for optional content checksums.  The upper 32 bits of `xxHash64 data 0` are
+for optional content checksums.  The lower 32 bits of `xxHash64 data 0` are
 stored as a checksum in Zstd frame footers when `Content_Checksum` is set.
 
 **Spec level**: Algorithmic correspondence (tier 3).  Unlike CRC-32, xxHash
@@ -21,7 +21,7 @@ The specification is structured in layers:
 5. **Remaining byte processing**: tail handling (8-byte, 4-byte, 1-byte chunks)
 
 Correctness theorems prove empty-input characterization, expansion
-equivalences, and the connection between `xxHash64Upper32` and the full
+equivalences, and the connection between `xxHash64Lower32` and the full
 `xxHash64` function.
 -/
 
@@ -157,9 +157,9 @@ theorem xxHash64_empty (seed : UInt64) :
         Nat.toUInt64_eq, UInt64.reduceOfNat, UInt64.add_zero, Nat.zero_mod,
         Nat.sub_self, processRemaining_zero]
 
-/-- `xxHash64Upper32` is defined as the upper 32 bits of `xxHash64 data 0`. -/
-theorem xxHash64Upper32_eq (data : ByteArray) :
-    XxHash64.xxHash64Upper32 data = (XxHash64.xxHash64 data 0 >>> 32).toUInt32 := by
+/-- `xxHash64Lower32` is defined as the lower 32 bits of `xxHash64 data 0`. -/
+theorem xxHash64Lower32_eq (data : ByteArray) :
+    XxHash64.xxHash64Lower32 data = (XxHash64.xxHash64 data 0).toUInt32 := by
   rfl
 
 /-- `mergeAccumulator` expands to its XOR-round-multiply-add form. -/
@@ -180,24 +180,20 @@ theorem avalanche_eq (h : UInt64) :
 
 /-! ## Test vector verification
 
-These theorems state xxHash64 test vectors from the xxHash specification.
-The proofs are left as `sorry` because UInt64 computations (64-bit arithmetic
-with wrapping) are too expensive for kernel evaluation (`decide_cbv` times out).
-The same test vectors are verified at runtime in `ZipTest/XxHashNative.lean`. -/
+These theorems state xxHash64 test vectors from the xxHash specification,
+proved by kernel evaluation (`decide +kernel`). The same test vectors are also
+checked at runtime in `ZstdTest/XxHashNative.lean`. -/
 
 /-- Known test vector: empty input with seed 0. -/
--- Verified at runtime in ZipTest/XxHashNative.lean
 theorem empty_seed0 :
-    XxHash64.xxHash64 ByteArray.empty 0 = 0xEF46DB3751D8E999 := by sorry
+    XxHash64.xxHash64 ByteArray.empty 0 = 0xEF46DB3751D8E999 := by decide +kernel
 
 /-- Known test vector: single byte 0x42 with seed 0. -/
--- Verified at runtime in ZipTest/XxHashNative.lean
 theorem single_byte_0x42 :
-    XxHash64.xxHash64 (ByteArray.mk #[0x42]) 0 = 0x6D69E28F063257F9 := by sorry
+    XxHash64.xxHash64 (ByteArray.mk #[0x42]) 0 = 0x6D69E28F063257F9 := by decide +kernel
 
-/-- Known test vector: upper 32 bits of empty input hash. -/
--- Verified at runtime in ZipTest/XxHashNative.lean
-theorem upper32_empty :
-    XxHash64.xxHash64Upper32 ByteArray.empty = 0xEF46DB37 := by sorry
+/-- Known test vector: the Zstandard checksum (lower 32 bits) of empty input. -/
+theorem lower32_empty :
+    XxHash64.xxHash64Lower32 ByteArray.empty = 0x51D8E999 := by decide +kernel
 
 end XxHash64.Spec

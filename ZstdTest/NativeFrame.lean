@@ -253,9 +253,10 @@ def ZstdTest.ZstdNativeFrame.tests : IO Unit := do
     unless e.contains "compressed blocks not yet implemented" || e.contains "sequence decoding not yet implemented" || e.contains "compressed literals" || e.contains "treeless literals" do
       throw (IO.userError s!"decompressFrame size: unexpected error: {e}")
 
-  -- Test 25: checksum verification — valid FFI-compressed data decompresses
-  -- FFI zstd sets the content checksum flag by default, so decompressZstd
-  -- will verify XXH64 checksum on this data.
+  -- Test 25: valid FFI-compressed data decompresses.
+  -- Note: libzstd's `ZSTD_compress` leaves the content checksum flag off by
+  -- default (only the `zstd` CLI turns it on), so this frame has no checksum;
+  -- Test 28 decodes a real checksummed frame.
   let checksumData := mkConstantData 256
   let checksumCompressed ← Zstd.compress checksumData 1
   match Zstd.Native.decompressZstd checksumCompressed with
@@ -303,5 +304,27 @@ def ZstdTest.ZstdNativeFrame.tests : IO Unit := do
   | .error e =>
     unless e.contains "compressed blocks not yet implemented" || e.contains "sequence decoding not yet implemented" || e.contains "compressed literals" || e.contains "treeless literals" do
       throw (IO.userError s!"checksum empty: unexpected error: {e}")
+
+  -- Test 28: a real checksummed frame from the `zstd` CLI (testdata/zstd/interop).
+  -- The frame stores the LOWER 32 bits of XXH64 (RFC 8878 §3.1.1); comparing against
+  -- the upper 32 bits rejects every checksummed frame. Also check that a corrupted
+  -- checksum is still rejected.
+  let hello ← readFixture "zstd/interop/system-hello.zst"
+  match Zstd.Native.parseFrameHeader hello 0 with
+  | .ok (hdr, _) =>
+    unless hdr.contentChecksum do
+      throw (IO.userError "system-hello.zst: expected a frame with a content checksum")
+  | .error e => throw (IO.userError s!"system-hello.zst: header parse failed: {e}")
+  match Zstd.Native.decompressZstd hello with
+  | .ok result =>
+    unless result.data == "Hello from system zstd\n".toUTF8.data do
+      throw (IO.userError "system-hello.zst: decompressed data mismatch")
+  | .error e => throw (IO.userError s!"system-hello.zst: unexpected error: {e}")
+  let badSum := hello.set! (hello.size - 1) (hello[hello.size - 1]! ^^^ 0x01)
+  match Zstd.Native.decompressZstd badSum with
+  | .ok _ => throw (IO.userError "system-hello.zst with a corrupted checksum: accepted")
+  | .error e =>
+    unless e.contains "checksum mismatch" do
+      throw (IO.userError s!"system-hello.zst with a corrupted checksum: unexpected error: {e}")
 
   IO.println "ZstdNativeFrame tests: OK"
